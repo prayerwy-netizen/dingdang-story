@@ -1,36 +1,58 @@
-export enum AspectRatio {
-  SQUARE = '1:1',
-  STANDARD = '4:3',
-  PORTRAIT = '3:4',
-  WIDE = '16:9',
-  MOBILE = '9:16',
-  CINEMA = '21:9'
-}
-
-export enum ImageSize {
-  K4 = '4K'
-}
-
-export enum GenerationMode {
-  GRID_2x2 = '2x2 分镜 (4视图)',
-  GRID_3x3 = '3x3 分镜 (9视图)'
-}
-
-export interface GeneratedImage {
+export interface DiaryEntry {
   id: string;
-  url: string;
-  fullGridUrl?: string;
-  prompt: string;
-  aspectRatio: string;
-  timestamp: number;
+  date: string;
+  content: string;
+  photos: string[]; // Base64 strings or URLs
+  isDraft?: boolean; // 草稿标记
 }
 
-export interface Asset {
+export interface ChildProfile {
+  name: string;
+  age: number;
+  redFlowers: number;
+}
+
+export interface ClassicContent {
   id: string;
-  file: File;
-  previewUrl: string;
-  type: 'image' | 'video';
-  analysis?: string;
+  title: string; // e.g., "弟子规 - 总叙"
+  text: string; // e.g., "弟子规 圣人训 首孝弟 次谨信"
+  pinyin: string; // e.g., "dì zǐ guī  shèng rén xùn  shǒu xiào tì  cì jǐn xìn"
+  category: 'dizigui' | 'tangshi' | 'custom'; // 新增custom类型
+  isLearned?: boolean; // 是否已学习
+  learnedDate?: string; // 学习日期
 }
 
-export type InspectorTab = 'details' | 'analysis';
+export interface DailyLesson {
+  date: string; // YYYY-MM-DD
+  contentId: string;
+  illustrationUrl?: string; // Generated image
+  explanationAudio?: ArrayBuffer; // Generated TTS
+  explanationText?: string;
+  questionText?: string;
+  questionAudio?: ArrayBuffer;
+  isCompleted: boolean;
+}
+
+export enum AppMode {
+  CHILD = 'CHILD',
+  PARENT = 'PARENT'
+}
+
+export enum ChildView {
+  HOME = 'HOME',
+  LEARNING = 'LEARNING',
+  COURSE_MENU = 'COURSE_MENU'
+}
+
+export enum ParentTab {
+  DIARY = 'DIARY',
+  SETTINGS = 'SETTINGS',
+  CUSTOM_CONTENT = 'CUSTOM_CONTENT'
+}
+
+// 学习进度记录
+export interface LearningProgress {
+  contentId: string;
+  completedAt: string;
+  earnedFlowers: number;
+}

@@ -1,358 +1,270 @@
-import React, { useState } from 'react';
-import { AssetBay } from './components/AssetBay';
-import { DirectorDeck } from './components/DirectorDeck';
-import { Canvas } from './components/Canvas';
-import { Inspector } from './components/Inspector';
-import { Asset, GeneratedImage, GenerationMode, AspectRatio, ImageSize } from './types';
-import { generateMultiViewGrid, fileToBase64, enhancePrompt, analyzeAsset, ReferenceImageData, ensureApiKey } from './services/geminiService';
-import { AlertCircle } from 'lucide-react';
-// @ts-ignore
-import JSZip from 'jszip';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
+import { AppMode, ChildProfile, DiaryEntry, ClassicContent } from './types';
+import { CLASSIC_LIBRARY, getTodayContentIndex } from './constants';
+import ChildMode from './components/ChildMode';
+import ParentMode from './components/ParentMode';
+import FamilyCodeEntry from './components/FamilyCodeEntry';
+
+// 服务层导入
+import * as familyService from './services/familyService';
+
+const FAMILY_CODE_KEY = 'dingdang_family_code';
 
 const App: React.FC = () => {
-  // --- State ---
-  const [assets, setAssets] = useState<Asset[]>([]);
-  const [images, setImages] = useState<GeneratedImage[]>([]);
-  
-  // Selection State (Shared between Lightbox/Assets and Inspector)
-  const [selectedImageId, setSelectedImageId] = useState<string | undefined>(undefined);
-  const [selectedAssetId, setSelectedAssetId] = useState<string | undefined>(undefined);
-  
-  // Generation Settings
-  const [mode, setMode] = useState<GenerationMode>(GenerationMode.GRID_2x2);
-  const [aspectRatio, setAspectRatio] = useState<AspectRatio>(AspectRatio.WIDE);
-  const [imageSize, setImageSize] = useState<ImageSize>(ImageSize.K4);
-  const [prompt, setPrompt] = useState<string>('');
-  
-  // Processing Flags
-  const [isGenerating, setIsGenerating] = useState(false);
-  const [isAnalyzing, setIsAnalyzing] = useState(false);
-  const [analysisResult, setAnalysisResult] = useState<string>('');
-  const [error, setError] = useState<string | null>(null);
+  // 家庭码
+  const [familyCode, setFamilyCode] = useState<string | null>(() => {
+    return localStorage.getItem(FAMILY_CODE_KEY);
+  });
 
-  // --- Handlers ---
+  const [mode, setMode] = useState<AppMode>(AppMode.CHILD);
+  const [profile, setProfile] = useState<familyService.Profile | null>(null);
+  const [diaries, setDiaries] = useState<DiaryEntry[]>([]);
+  const [customContents, setCustomContents] = useState<ClassicContent[]>([]);
+  const [learnedCourseIds, setLearnedCourseIds] = useState<Set<string>>(new Set());
+  const [loading, setLoading] = useState(true);
 
-  const handleModeChange = (newMode: GenerationMode) => {
-    setMode(newMode);
-  };
+  // 从 profile 构建前端使用的 ChildProfile
+  const childProfile: ChildProfile = useMemo(() => ({
+    name: profile?.name || '宝贝',
+    age: profile?.age || 5,
+    redFlowers: profile?.red_flowers || 0,
+  }), [profile]);
 
-  const handleAddAsset = (files: FileList) => {
-    Array.from(files).forEach((file) => {
-      const url = URL.createObjectURL(file);
-      const newAsset: Asset = {
-        id: crypto.randomUUID(),
-        file,
-        previewUrl: url,
-        type: file.type.startsWith('video') ? 'video' : 'image',
-      };
-      setAssets((prev) => [...prev, newAsset]);
-      handleSelectAsset(newAsset);
-    });
-  };
+  // 课程偏移量
+  const courseStartOffset = profile?.course_offset || 0;
 
-  const handleRemoveAsset = (id: string) => {
-    setAssets((prev) => prev.filter((a) => a.id !== id));
-    if (selectedAssetId === id) setSelectedAssetId(undefined);
-  };
+  // 加载用户数据
+  const loadUserData = useCallback(async (code: string) => {
+    setLoading(true);
 
-  const handleSelectAsset = (asset: Asset) => {
-      setSelectedAssetId(asset.id);
-      setSelectedImageId(undefined); // Deselect image when asset is selected
-      setAnalysisResult('');
-  };
+    try {
+      // 获取或创建 Profile
+      const profileData = await familyService.getOrCreateProfile(code);
+      setProfile(profileData);
 
-  const handleSelectImage = (image: GeneratedImage) => {
-      setSelectedImageId(image.id);
-      setSelectedAssetId(undefined); // Deselect asset when image is selected
-      setAnalysisResult('');
-  };
+      // 并行加载其他数据
+      const [diaryRecords, customRecords, learnedIds] = await Promise.all([
+        familyService.getDiaries(code),
+        familyService.getCustomContents(code),
+        familyService.getLearnedCourseIds(code),
+      ]);
 
-  const handleAnalyzeSelection = async (instructionPrompt: string) => {
-    const assetToAnalyze = assets.find(a => a.id === selectedAssetId);
-    const imageToAnalyze = images.find(i => i.id === selectedImageId);
-    
-    let base64Data = '';
-    let mimeType = 'image/jpeg';
+      setDiaries(diaryRecords.map(familyService.toFrontendDiary));
+      setCustomContents(customRecords.map(familyService.toFrontendContent));
+      setLearnedCourseIds(learnedIds);
+    } catch (error) {
+      console.error('加载数据失败:', error);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
-    if (assetToAnalyze) {
-        try {
-            base64Data = await fileToBase64(assetToAnalyze.file);
-            mimeType = assetToAnalyze.file.type;
-        } catch (e) {
-            setError("无法读取素材文件。");
-            return;
-        }
-    } else if (imageToAnalyze) {
-        base64Data = imageToAnalyze.url.split(',')[1];
+  // 家庭码变化时加载数据
+  useEffect(() => {
+    if (familyCode) {
+      loadUserData(familyCode);
     } else {
-        return;
+      setLoading(false);
     }
+  }, [familyCode, loadUserData]);
 
-    setIsAnalyzing(true);
-    try {
-        const result = await analyzeAsset(base64Data, mimeType, instructionPrompt);
-        setAnalysisResult(result);
-    } catch (e: any) {
-        handleError(e);
-    } finally {
-        setIsAnalyzing(false);
+  // 设置家庭码
+  const handleFamilyCodeSubmit = (code: string) => {
+    localStorage.setItem(FAMILY_CODE_KEY, code);
+    setFamilyCode(code);
+  };
+
+  // 合并内置经典和自定义内容，标记已学习状态
+  const allContents = useMemo(() => {
+    const contents = [...CLASSIC_LIBRARY, ...customContents];
+    return contents.map(c => ({
+      ...c,
+      isLearned: learnedCourseIds.has(c.id),
+    }));
+  }, [customContents, learnedCourseIds]);
+
+  // 计算今日和昨日内容
+  const baseIndex = getTodayContentIndex(allContents);
+  const todayIndex = (baseIndex - courseStartOffset + allContents.length) % allContents.length;
+  const yesterdayIndex = todayIndex === 0 ? allContents.length - 1 : todayIndex - 1;
+  const todayContent = allContents[todayIndex];
+  const yesterdayContent = allContents[yesterdayIndex];
+
+  // 更新用户资料
+  const handleUpdateProfile = async (updates: Partial<ChildProfile>) => {
+    if (!familyCode) return;
+
+    const dbUpdates: Parameters<typeof familyService.updateProfile>[1] = {};
+    if (updates.name !== undefined) dbUpdates.name = updates.name;
+    if (updates.age !== undefined) dbUpdates.age = updates.age;
+    if (updates.redFlowers !== undefined) dbUpdates.red_flowers = updates.redFlowers;
+
+    const result = await familyService.updateProfile(familyCode, dbUpdates);
+    if (result.success) {
+      setProfile(prev => prev ? { ...prev, ...dbUpdates } : null);
     }
   };
 
-  const handleEnhancePrompt = async () => {
-    if (!prompt.trim()) return;
-    setIsGenerating(true); 
-    try {
-        const enhanced = await enhancePrompt(prompt);
-        setPrompt(enhanced);
-    } catch (e) {
-        console.error(e);
-    } finally {
-        setIsGenerating(false);
-    }
-  };
+  // 添加/更新日记
+  const handleAddDiary = async (entry: DiaryEntry) => {
+    if (!familyCode) return;
 
-  const handleGenerate = async () => {
-    setError(null);
+    const existingDiary = diaries.find(d => d.id === entry.id);
 
-    // Validation 1: At least one asset required
-    const imageAssets = assets.filter(a => a.type === 'image');
-    if (imageAssets.length === 0) {
-        setError("必须至少上传一张参考图 (Asset) 才能生成分镜。");
-        return;
-    }
-
-    // Validation 2: Max assets limit (to prevent context overflow or model errors)
-    if (imageAssets.length > 4) {
-        setError("参考图数量过多。为了获得最佳效果，请限制在 4 张以内。");
-        return;
-    }
-
-    setIsGenerating(true);
-
-    try {
-      const referenceImages: ReferenceImageData[] = await Promise.all(
-        imageAssets.map(async (asset) => ({
-            data: await fileToBase64(asset.file),
-            mimeType: asset.file.type
-        }))
-      );
-
-      const timestamp = Date.now();
-
-      // Always Grid Mode now
-      const rows = mode === GenerationMode.GRID_2x2 ? 2 : 3;
-      const cols = mode === GenerationMode.GRID_2x2 ? 2 : 3;
-      const total = rows * cols;
-
-      const result = await generateMultiViewGrid(prompt, rows, cols, aspectRatio, imageSize, referenceImages);
-      
-      const newImages: GeneratedImage[] = result.slices.map((url, index) => ({
-          id: crypto.randomUUID(),
-          url,
-          fullGridUrl: result.fullImage,
-          prompt: `[${mode} Panel ${index+1}/${total}] ${prompt.substring(0, 30)}...`, 
-          aspectRatio: aspectRatio,
-          timestamp: timestamp + index
-      }));
-      
-      setImages(prev => [...newImages, ...prev]);
-      if (newImages.length > 0) handleSelectImage(newImages[0]);
-
-    } catch (err: any) {
-      handleError(err);
-    } finally {
-      setIsGenerating(false);
-    }
-  };
-
-  const handleError = (err: any) => {
-      let message = err.message || "未知错误";
-      if (message.includes("API key") || message.includes("403") || message.includes("Requested entity was not found")) {
-          message = "需要 API Key 权限。请确保您已选择有效的 API Key。";
-          // Attempt to reopen key selector
-          // @ts-ignore
-          if (window.aistudio && window.aistudio.openSelectKey) {
-             // @ts-ignore
-             window.aistudio.openSelectKey();
-          }
+    if (existingDiary) {
+      const result = await familyService.updateDiary(entry.id, {
+        content: entry.content,
+        photos: entry.photos,
+        is_draft: entry.isDraft || false,
+      });
+      if (result.success) {
+        setDiaries(prev => prev.map(d => d.id === entry.id ? entry : d));
       }
-      setError(message);
-  };
-
-  const handleDeleteImage = (id: string) => {
-      setImages(prev => prev.filter(img => img.id !== id));
-      if (selectedImageId === id) setSelectedImageId(undefined);
-  };
-
-  const handleDownloadBatch = async () => {
-      if (images.length === 0) return;
-      
-      const zip = new JSZip();
-      const folder = zip.folder("DirectorDeck_renders");
-      
-      try {
-          // Add all images to zip
-          for (let i = 0; i < images.length; i++) {
-              const img = images[i];
-              const response = await fetch(img.url);
-              const blob = await response.blob();
-              folder?.file(`render_${i + 1}_${img.id.substring(0, 6)}.png`, blob);
-          }
-
-          // Add Full Grids if unique
-          const processedGrids = new Set();
-          for (let i = 0; i < images.length; i++) {
-               const img = images[i];
-               if (img.fullGridUrl && !processedGrids.has(img.fullGridUrl)) {
-                   processedGrids.add(img.fullGridUrl);
-                   const response = await fetch(img.fullGridUrl);
-                   const blob = await response.blob();
-                   folder?.file(`grid_source_${img.id.substring(0,6)}.png`, blob);
-               }
-          }
-
-          const content = await zip.generateAsync({ type: "blob" });
-          const url = URL.createObjectURL(content);
-          
-          const a = document.createElement("a");
-          a.href = url;
-          a.download = `DirectorDeck_batch_${Date.now()}.zip`;
-          document.body.appendChild(a);
-          a.click();
-          document.body.removeChild(a);
-          URL.revokeObjectURL(url);
-
-      } catch (e: any) {
-          setError("打包下载失败: " + e.message);
+    } else {
+      const result = await familyService.createDiary(familyCode, {
+        date: entry.date,
+        content: entry.content,
+        photos: entry.photos,
+        is_draft: entry.isDraft || false,
+      });
+      if (result.success && result.data) {
+        const newEntry = familyService.toFrontendDiary(result.data);
+        setDiaries(prev => [newEntry, ...prev]);
       }
+    }
   };
 
-  const activeImage = images.find(i => i.id === selectedImageId) || null;
-  const activeAsset = assets.find(a => a.id === selectedAssetId) || null;
+  // 删除日记
+  const handleDeleteDiary = async (id: string) => {
+    const result = await familyService.deleteDiary(id);
+    if (result.success) {
+      setDiaries(prev => prev.filter(d => d.id !== id));
+    }
+  };
+
+  // 添加自定义内容
+  const handleAddCustomContent = async (content: ClassicContent) => {
+    if (!familyCode) return;
+
+    const result = await familyService.createCustomContent(familyCode, {
+      title: content.title,
+      text: content.text,
+      pinyin: content.pinyin,
+    });
+
+    if (result.success && result.data) {
+      const newContent = familyService.toFrontendContent(result.data);
+      setCustomContents(prev => [...prev, newContent]);
+    }
+  };
+
+  // 删除自定义内容
+  const handleDeleteCustomContent = async (id: string) => {
+    const result = await familyService.deleteCustomContent(id);
+    if (result.success) {
+      setCustomContents(prev => prev.filter(c => c.id !== id));
+    }
+  };
+
+  // 打开家长模式
+  const handleOpenParentGate = () => {
+    const password = prompt("请输入家长密码 (默认 1234)");
+    if (password === '1234') {
+      setMode(AppMode.PARENT);
+    } else if (password !== null) {
+      alert("密码错误，请重试");
+    }
+  };
+
+  // 重置课程
+  const handleResetCourse = async () => {
+    if (!familyCode) return;
+
+    // 计算当前基准索引，重置后 todayIndex = baseIndex - baseIndex = 0（第一课）
+    const newOffset = baseIndex;
+    const result = await familyService.resetCourseProgress(familyCode, newOffset);
+    if (result.success) {
+      setProfile(prev => prev ? { ...prev, course_offset: newOffset } : null);
+      setLearnedCourseIds(new Set());
+    }
+  };
+
+  // 标记课程为已学习
+  const handleMarkCourseAsLearned = async (courseId: string) => {
+    if (!familyCode) return;
+    if (learnedCourseIds.has(courseId)) return;
+
+    const result = await familyService.markCourseAsLearned(familyCode, courseId);
+    if (result.success) {
+      setLearnedCourseIds(prev => new Set([...prev, courseId]));
+    }
+  };
+
+  // 切换家庭码
+  const handleSwitchFamily = () => {
+    if (confirm('确定要切换家庭码吗？')) {
+      localStorage.removeItem(FAMILY_CODE_KEY);
+      setFamilyCode(null);
+      setProfile(null);
+      setDiaries([]);
+      setCustomContents([]);
+      setLearnedCourseIds(new Set());
+    }
+  };
+
+  // 显示加载状态
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-b from-sky-100 to-sky-200 flex items-center justify-center">
+        <div className="text-center">
+          <div className="text-6xl mb-4 animate-bounce">🔔</div>
+          <p className="text-sky-600 text-lg">叮当学堂加载中...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // 未设置家庭码，显示输入页面
+  if (!familyCode) {
+    return <FamilyCodeEntry onCodeSubmit={handleFamilyCodeSubmit} />;
+  }
 
   return (
-    <div className="flex h-screen w-screen overflow-hidden bg-cine-black text-cine-text-muted font-sans">
-      
-      {/* 1. Left Sidebar: Assets & Controls (340px) */}
-      <aside className="w-[340px] flex flex-col border-r border-cine-border bg-cine-dark z-20 shadow-2xl flex-shrink-0">
-        <div className="p-5 pb-3 border-b border-zinc-800/50 bg-black/20">
-            <h1 className="text-white text-sm font-bold tracking-[0.2em] uppercase font-mono flex items-center gap-2">
-                <span className="w-2 h-2 bg-cine-accent rounded-[1px] shadow-[0_0_10px_rgba(212,252,121,0.5)]"></span>
-                睿来 - 影视实验室
-            </h1>
+    <div className="min-h-screen bg-gradient-to-b from-primary-50 to-primary-100">
+      <div className="min-h-screen w-full md:max-w-2xl lg:max-w-4xl md:mx-auto md:py-4 lg:py-6">
+        <div className="min-h-screen md:min-h-0 md:h-[calc(100vh-2rem)] lg:h-[calc(100vh-3rem)] bg-white md:rounded-4xl md:shadow-clay overflow-hidden">
+          {mode === AppMode.CHILD ? (
+            <ChildMode
+              profile={childProfile}
+              diaries={diaries}
+              allContents={allContents}
+              todayContent={todayContent}
+              yesterdayContent={yesterdayContent}
+              onUpdateProfile={handleUpdateProfile}
+              onOpenParentGate={handleOpenParentGate}
+              onMarkCourseAsLearned={handleMarkCourseAsLearned}
+            />
+          ) : (
+            <ParentMode
+              profile={childProfile}
+              diaries={diaries}
+              customContents={customContents}
+              currentLessonIndex={todayIndex}
+              totalLessons={allContents.length}
+              onAddDiary={handleAddDiary}
+              onDeleteDiary={handleDeleteDiary}
+              onUpdateProfile={handleUpdateProfile}
+              onAddCustomContent={handleAddCustomContent}
+              onDeleteCustomContent={handleDeleteCustomContent}
+              onResetCourse={handleResetCourse}
+              onSwitchFamily={handleSwitchFamily}
+              onExit={() => setMode(AppMode.CHILD)}
+            />
+          )}
         </div>
-
-        <div className="flex-1 flex flex-col p-4 gap-6 overflow-y-auto custom-scrollbar">
-            {/* Reduced flex ratio for Assets */}
-            <div className="flex-[0.25] min-h-[140px]">
-                <AssetBay 
-                    assets={assets} 
-                    onAddAsset={handleAddAsset} 
-                    onRemoveAsset={handleRemoveAsset} 
-                    onSelectAsset={handleSelectAsset}
-                    selectedAssetId={selectedAssetId}
-                />
-            </div>
-
-            {/* Increased flex ratio for Controls/Prompt */}
-            <div className="flex-[0.75]">
-                <DirectorDeck 
-                    mode={mode}
-                    setMode={handleModeChange}
-                    aspectRatio={aspectRatio}
-                    setAspectRatio={setAspectRatio}
-                    imageSize={imageSize}
-                    setImageSize={setImageSize}
-                    prompt={prompt}
-                    setPrompt={setPrompt}
-                    onGenerate={handleGenerate}
-                    isGenerating={isGenerating}
-                    onEnhancePrompt={handleEnhancePrompt}
-                />
-            </div>
-        </div>
-      </aside>
-
-      {/* 2. Middle: Canvas */}
-      <main className="flex-1 relative bg-black flex flex-col min-w-0">
-        <Canvas
-            images={images} 
-            onSelect={handleSelectImage} 
-            selectedId={selectedImageId}
-            onDelete={handleDeleteImage} 
-            onDownloadAll={handleDownloadBatch}
-        />
-        
-        {isGenerating && (
-            <div className="absolute inset-0 bg-black/80 backdrop-blur-md z-50 flex flex-col items-center justify-center space-y-6 pointer-events-none animate-in fade-in duration-300">
-                 <div className="relative">
-                    <div className="w-16 h-16 border-t-2 border-b-2 border-cine-accent rounded-full animate-spin"></div>
-                    <div className="absolute inset-0 flex items-center justify-center">
-                        <div className="w-2 h-2 bg-cine-accent rounded-full animate-pulse"></div>
-                    </div>
-                 </div>
-                 <div className="text-center space-y-2">
-                     <p className="text-white font-mono tracking-[0.2em] text-sm uppercase">
-                         正在处理渲染请求
-                     </p>
-                     <p className="text-cine-accent/70 font-mono text-xs">
-                         正在生成 {mode}
-                     </p>
-                 </div>
-            </div>
-        )}
-
-        {error && (
-            <div className="absolute bottom-8 left-8 z-50 bg-red-950/90 border border-red-500/50 text-red-200 p-4 rounded-sm text-xs flex gap-3 items-start animate-in slide-in-from-bottom-5 max-w-md shadow-2xl backdrop-blur-sm">
-                <AlertCircle size={16} className="shrink-0 mt-0.5 text-red-400" />
-                <div className="space-y-1">
-                    <p className="font-bold uppercase tracking-wider text-red-400">系统错误 (SYSTEM ERROR)</p>
-                    <span className="leading-relaxed opacity-80">{error}</span>
-                </div>
-                <button onClick={() => setError(null)} className="ml-auto hover:text-white border-l border-red-800/50 pl-3 transition-colors">
-                    <X size={14} />
-                </button>
-            </div>
-        )}
-      </main>
-
-      {/* 3. Right: Inspector (360px) */}
-      <aside className="w-[360px] bg-cine-dark border-l border-cine-border z-20 shadow-2xl flex-shrink-0">
-         <Inspector 
-            selectedImage={activeImage}
-            selectedAsset={activeAsset}
-            onClose={() => {
-                setSelectedImageId(undefined);
-                setSelectedAssetId(undefined);
-            }}
-            onAnalyze={handleAnalyzeSelection}
-            isAnalyzing={isAnalyzing}
-            analysisResult={analysisResult}
-         />
-      </aside>
+      </div>
     </div>
   );
 };
-
-// Simple X icon helper for error toast since Lucide X is used in AssetBay
-const X = ({ size, className, ...props }: any) => (
-    <svg 
-        xmlns="http://www.w3.org/2000/svg" 
-        width={size} 
-        height={size} 
-        viewBox="0 0 24 24" 
-        fill="none" 
-        stroke="currentColor" 
-        strokeWidth="2" 
-        strokeLinecap="round" 
-        strokeLinejoin="round" 
-        className={className}
-        {...props}
-    >
-        <path d="M18 6 6 18" />
-        <path d="m6 6 12 12" />
-    </svg>
-)
 
 export default App;
