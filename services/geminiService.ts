@@ -8,7 +8,7 @@ const ai = new GoogleGenAI({ apiKey: API_KEY });
 const USE_PROXY_API = false;
 
 // MiniMax TTS API 配置
-const MINIMAX_API_KEY = 'sk-api-oYkLiWwgzFM8N4tDmWr33lcYOSZpCoocng-1a62OkXIFLkrARcRS2o4iCBBh0mDQJmnY1xRLWBzzA_XPctsZcKjHBAQtz3imna7BL1jLTKDta7HaF9W1r8Q';
+const MINIMAX_API_KEY = import.meta.env.VITE_MINIMAX_API_KEY || '';
 const MINIMAX_TTS_URL = 'https://api.minimaxi.com/v1/t2a_v2';
 
 // 图片缓存 - 使用 localStorage 持久化存储

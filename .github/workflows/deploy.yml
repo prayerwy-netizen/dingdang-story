@@ -39,6 +39,7 @@ jobs:
           VITE_VOLC_API_KEY: ${{ secrets.VITE_VOLC_API_KEY }}
           VITE_DOUBAO_MODEL_ID: ${{ secrets.VITE_DOUBAO_MODEL_ID }}
           VITE_DOUBAO_IMAGE_MODEL_ID: ${{ secrets.VITE_DOUBAO_IMAGE_MODEL_ID }}
+          VITE_MINIMAX_API_KEY: ${{ secrets.VITE_MINIMAX_API_KEY }}
 
       - name: Setup Pages
         uses: actions/configure-pages@v4
