@@ -1,9 +1,14 @@
 import React, { useState, useEffect, useRef, TouchEvent } from 'react';
 import { ChildProfile, ClassicContent, DiaryEntry, ChildView } from '../types';
 import { CATEGORY_INFO } from '../constants';
-import { generateIllustration, generateLessonScript, generateSpeech, analyzeAnswerAndEncourage } from '../services/geminiService';
+import { generateIllustration, generateLessonScript, analyzeAnswerAndEncourage } from '../services/aiService';
+import { generateSpeech } from '../services/geminiService';
+import { getTotalScore } from '../services/recordService';
 import AudioPlayer, { AudioPlayerHandle } from './AudioPlayer';
 import Recorder from './Recorder';
+import PointsDashboard from './PointsDashboard';
+import GiftShop from './GiftShop';
+import MyRecords from './MyRecords';
 
 interface ChildModeProps {
   profile: ChildProfile;
@@ -11,6 +16,7 @@ interface ChildModeProps {
   allContents: ClassicContent[];
   todayContent: ClassicContent;
   yesterdayContent: ClassicContent;
+  familyCode: string;
   onUpdateProfile: (updates: Partial<ChildProfile>) => void;
   onOpenParentGate: () => void;
   onMarkCourseAsLearned?: (courseId: string) => void;
@@ -46,6 +52,18 @@ const BookIcon = () => (
 const LockIcon = () => (
   <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+  </svg>
+);
+
+const GiftIcon = () => (
+  <svg className="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v13m0-13V6a2 2 0 112 2h-2zm0 0V5.5A2.5 2.5 0 109.5 8H12zm-7 4h14M5 12a2 2 0 110-4h14a2 2 0 110 4M5 12v7a2 2 0 002 2h10a2 2 0 002-2v-7" />
+  </svg>
+);
+
+const ListIcon = () => (
+  <svg className="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
   </svg>
 );
 
@@ -123,6 +141,7 @@ const ChildMode: React.FC<ChildModeProps> = ({
   allContents,
   todayContent,
   yesterdayContent,
+  familyCode,
   onUpdateProfile,
   onOpenParentGate,
   onMarkCourseAsLearned
@@ -130,6 +149,18 @@ const ChildMode: React.FC<ChildModeProps> = ({
   const [view, setView] = useState<ChildView>(ChildView.HOME);
   const [selectedContent, setSelectedContent] = useState<ClassicContent | null>(null);
   const [showYesterday, setShowYesterday] = useState(false);
+  const [totalPoints, setTotalPoints] = useState(0);
+
+  // 加载积分
+  useEffect(() => {
+    const loadPoints = async () => {
+      if (familyCode) {
+        const score = await getTotalScore(familyCode);
+        setTotalPoints(score);
+      }
+    };
+    loadPoints();
+  }, [familyCode, view]);
 
   // Learning State
   const [learningState, setLearningState] = useState<LearningState>(LearningState.IDLE);
@@ -285,6 +316,26 @@ const ChildMode: React.FC<ChildModeProps> = ({
   }, {} as Record<string, ClassicContent[]>);
 
   // ==================== RENDER ====================
+
+  // 礼物商城视图
+  if (view === ChildView.GIFT_SHOP) {
+    return (
+      <GiftShop
+        familyCode={familyCode}
+        onClose={() => setView(ChildView.HOME)}
+      />
+    );
+  }
+
+  // 我的记录视图
+  if (view === ChildView.MY_RECORDS) {
+    return (
+      <MyRecords
+        familyCode={familyCode}
+        onClose={() => setView(ChildView.HOME)}
+      />
+    );
+  }
 
   // 课程菜单视图
   if (view === ChildView.COURSE_MENU) {
@@ -442,7 +493,7 @@ const ChildMode: React.FC<ChildModeProps> = ({
                   </div>
                   <AudioPlayer
                     audioBuffer={null}
-                    text={`${profile.name}，我们今天学的是${selectedContent.title}。${selectedContent.text}`}
+                    text={`${profile.name}， 我们今天学的是， ${selectedContent.title}。   ${selectedContent.text}`}
                     autoPlay={true}
                     onEnded={handleReadingEnded}
                   />
@@ -600,10 +651,8 @@ const ChildMode: React.FC<ChildModeProps> = ({
             </div>
           </div>
           <div className="flex items-center gap-2 clay-card px-4 py-2">
-            <span className="text-accent-orange">
-              <FlowerIcon />
-            </span>
-            <span className="font-heading text-xl text-accent-orange">{profile.redFlowers}</span>
+            <span className="text-2xl">💰</span>
+            <span className="font-heading text-xl text-accent-orange">{totalPoints}</span>
           </div>
         </div>
       </div>
@@ -690,11 +739,11 @@ const ChildMode: React.FC<ChildModeProps> = ({
               <p className="text-primary-400 text-xs">篇经典</p>
             </div>
             <div className="clay-card p-4 md:p-5 text-center">
-              <p className="text-primary-400 text-sm mb-1">获得</p>
+              <p className="text-primary-400 text-sm mb-1">小元宝</p>
               <p className="font-heading text-2xl md:text-3xl text-accent-orange">
-                {profile.redFlowers}
+                {totalPoints}
               </p>
-              <p className="text-primary-400 text-xs">朵小红花</p>
+              <p className="text-primary-400 text-xs">可兑换礼物</p>
             </div>
           </div>
         </div>
@@ -705,7 +754,7 @@ const ChildMode: React.FC<ChildModeProps> = ({
         <div className="flex items-center justify-around p-2 md:p-3">
           <button
             onClick={() => setView(ChildView.HOME)}
-            className={`touch-target flex flex-col items-center gap-1 px-6 py-2 rounded-2xl cursor-pointer transition-colors ${
+            className={`touch-target flex flex-col items-center gap-1 px-4 py-2 rounded-2xl cursor-pointer transition-colors ${
               view === ChildView.HOME ? 'bg-primary-50 text-primary-600' : 'text-primary-300'
             }`}
           >
@@ -715,7 +764,7 @@ const ChildMode: React.FC<ChildModeProps> = ({
 
           <button
             onClick={() => setView(ChildView.COURSE_MENU)}
-            className={`touch-target flex flex-col items-center gap-1 px-6 py-2 rounded-2xl cursor-pointer transition-colors ${
+            className={`touch-target flex flex-col items-center gap-1 px-4 py-2 rounded-2xl cursor-pointer transition-colors ${
               view === ChildView.COURSE_MENU ? 'bg-primary-50 text-primary-600' : 'text-primary-300'
             }`}
           >
@@ -724,8 +773,28 @@ const ChildMode: React.FC<ChildModeProps> = ({
           </button>
 
           <button
+            onClick={() => setView(ChildView.GIFT_SHOP)}
+            className={`touch-target flex flex-col items-center gap-1 px-4 py-2 rounded-2xl cursor-pointer transition-colors ${
+              view === ChildView.GIFT_SHOP ? 'bg-primary-50 text-primary-600' : 'text-primary-300'
+            }`}
+          >
+            <GiftIcon />
+            <span className="text-xs font-medium">礼物</span>
+          </button>
+
+          <button
+            onClick={() => setView(ChildView.MY_RECORDS)}
+            className={`touch-target flex flex-col items-center gap-1 px-4 py-2 rounded-2xl cursor-pointer transition-colors ${
+              view === ChildView.MY_RECORDS ? 'bg-primary-50 text-primary-600' : 'text-primary-300'
+            }`}
+          >
+            <ListIcon />
+            <span className="text-xs font-medium">记录</span>
+          </button>
+
+          <button
             onClick={onOpenParentGate}
-            className="touch-target flex flex-col items-center gap-1 px-6 py-2 rounded-2xl text-primary-300 cursor-pointer hover:text-primary-400 transition-colors"
+            className="touch-target flex flex-col items-center gap-1 px-4 py-2 rounded-2xl text-primary-300 cursor-pointer hover:text-primary-400 transition-colors"
           >
             <LockIcon />
             <span className="text-xs font-medium">家长</span>

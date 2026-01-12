@@ -7,6 +7,7 @@ import FamilyCodeEntry from './components/FamilyCodeEntry';
 
 // 服务层导入
 import * as familyService from './services/familyService';
+import { addRecord } from './services/recordService';
 
 const FAMILY_CODE_KEY = 'dingdang_family_code';
 
@@ -197,6 +198,14 @@ const App: React.FC = () => {
     const result = await familyService.markCourseAsLearned(familyCode, courseId);
     if (result.success) {
       setLearnedCourseIds(prev => new Set([...prev, courseId]));
+
+      // 添加5个小元宝奖励
+      const content = allContents.find(c => c.id === courseId);
+      await addRecord(familyCode, {
+        task_name: `学习完成：${content?.title || '国学经典'}`,
+        score: 5,
+        note: '学习奖励',
+      });
     }
   };
 
@@ -240,6 +249,7 @@ const App: React.FC = () => {
               allContents={allContents}
               todayContent={todayContent}
               yesterdayContent={yesterdayContent}
+              familyCode={familyCode}
               onUpdateProfile={handleUpdateProfile}
               onOpenParentGate={handleOpenParentGate}
               onMarkCourseAsLearned={handleMarkCourseAsLearned}
@@ -251,6 +261,7 @@ const App: React.FC = () => {
               customContents={customContents}
               currentLessonIndex={todayIndex}
               totalLessons={allContents.length}
+              familyCode={familyCode}
               onAddDiary={handleAddDiary}
               onDeleteDiary={handleDeleteDiary}
               onUpdateProfile={handleUpdateProfile}

@@ -4,6 +4,9 @@ import { ClassicContent, DiaryEntry } from "../types";
 const API_KEY = import.meta.env.VITE_GEMINI_API_KEY || process.env.API_KEY || '';
 const ai = new GoogleGenAI({ apiKey: API_KEY });
 
+// 第三方中转 API 配置（已禁用，全部使用原生 Gemini）
+const USE_PROXY_API = false;
+
 // MiniMax TTS API 配置
 const MINIMAX_API_KEY = 'sk-api-oYkLiWwgzFM8N4tDmWr33lcYOSZpCoocng-1a62OkXIFLkrARcRS2o4iCBBh0mDQJmnY1xRLWBzzA_XPctsZcKjHBAQtz3imna7BL1jLTKDta7HaF9W1r8Q';
 const MINIMAX_TTS_URL = 'https://api.minimaxi.com/v1/t2a_v2';
@@ -23,7 +26,23 @@ const saveImageToCache = (contentId: string, imageData: string): void => {
   try {
     localStorage.setItem(IMAGE_CACHE_PREFIX + contentId, imageData);
   } catch (e) {
-    console.warn('Failed to cache image:', e);
+    // localStorage 满了，清理旧缓存
+    console.warn('Failed to cache image, clearing old cache:', e);
+    clearOldImageCache();
+    try {
+      localStorage.setItem(IMAGE_CACHE_PREFIX + contentId, imageData);
+    } catch {
+      console.warn('Still failed after clearing cache');
+    }
+  }
+};
+
+// 清理旧的图片缓存
+const clearOldImageCache = (): void => {
+  const keys = Object.keys(localStorage).filter(k => k.startsWith(IMAGE_CACHE_PREFIX));
+  // 保留最新的 10 张，删除其他的
+  if (keys.length > 10) {
+    keys.slice(0, keys.length - 10).forEach(k => localStorage.removeItem(k));
   }
 };
 
@@ -37,30 +56,155 @@ export const generateIllustration = async (content: ClassicContent): Promise<str
     return cachedImage;
   }
 
+  const prompt = `生成一张儿童国学启蒙配图：
+
+经典原文：${content.text}
+拼音：${content.pinyin}
+
+画面内容建议：根据原文含义，描绘温馨、可爱、充满童趣的场景。
+
+要求：
+1. 风格：可爱卡通，色彩明快，适合3-6岁儿童
+2. 文字排版：拼音在上，汉字在下（每个汉字上方对应其拼音）
+3. 文字位置：放在图片上方区域，清晰可读
+4. 背景是与内容相关的可爱插画，占据图片下方大部分区域
+5. 整体温馨、充满童趣
+6. 图片比例：方形（1:1）
+
+文字排版示例：
+chūn mián bù jué xiǎo
+春   眠   不  觉  晓
+
+画面风格参考：可爱的小朋友形象、圆润的线条、柔和的配色`;
+
   try {
-    const prompt = `
-    生成一张儿童国学启蒙配图：
+    // 优先使用中转 API
+    if (USE_PROXY_API) {
+      console.log('Using proxy API for image generation...');
 
-    经典原文：${content.text}
-    拼音：${content.pinyin}
+      // 尝试使用 /images/generations 端点（DALL-E 格式）
+      try {
+        const imageResponse = await fetch(`${OPENAI_BASE_URL}/images/generations`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${OPENAI_API_KEY}`
+          },
+          body: JSON.stringify({
+            model: PROXY_IMAGE_MODEL,
+            prompt: prompt,
+            n: 1,
+            size: '1024x1024',
+            response_format: 'b64_json'
+          })
+        });
 
-    画面内容建议：根据原文含义，描绘温馨、可爱、充满童趣的场景。
+        if (imageResponse.ok) {
+          const imageData = await imageResponse.json();
+          console.log('Image generation response:', imageData);
 
-    要求：
-    1. 风格：可爱卡通，色彩明快，适合3-6岁儿童
-    2. 文字排版：拼音在上，汉字在下（每个汉字上方对应其拼音）
-    3. 文字位置：放在图片上方区域，清晰可读
-    4. 背景是与内容相关的可爱插画，占据图片下方大部分区域
-    5. 整体温馨、充满童趣
-    6. 图片比例：方形（1:1）
+          // DALL-E 格式: {data: [{b64_json: '...'}]}
+          if (imageData.data?.[0]?.b64_json) {
+            const base64Image = `data:image/png;base64,${imageData.data[0].b64_json}`;
+            saveImageToCache(content.id, base64Image);
+            return base64Image;
+          }
+          // URL 格式: {data: [{url: '...'}]}
+          if (imageData.data?.[0]?.url) {
+            saveImageToCache(content.id, imageData.data[0].url);
+            return imageData.data[0].url;
+          }
+        } else {
+          console.log('Images endpoint failed, trying chat completions...');
+        }
+      } catch (e) {
+        console.log('Images endpoint error:', e);
+      }
 
-    文字排版示例：
-    chūn mián bù jué xiǎo
-    春   眠   不  觉  晓
+      // 降级尝试 /chat/completions 端点
+      const response = await fetch(`${OPENAI_BASE_URL}/chat/completions`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${OPENAI_API_KEY}`
+        },
+        body: JSON.stringify({
+          model: PROXY_IMAGE_MODEL,
+          messages: [
+            { role: 'user', content: prompt }
+          ]
+        })
+      });
 
-    画面风格参考：可爱的小朋友形象、圆润的线条、柔和的配色
-    `;
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('Proxy image API error:', errorText);
+        throw new Error('Proxy image API failed');
+      }
 
+      const data = await response.json();
+      console.log('Proxy chat image response:', JSON.stringify(data, null, 2));
+
+      // 尝试从响应中提取图片
+      const message = data.choices?.[0]?.message;
+      const content_parts = message?.content;
+
+      // 格式1: content 是数组（多模态响应）
+      if (Array.isArray(content_parts)) {
+        for (const part of content_parts) {
+          // OpenAI 格式: {type: 'image_url', image_url: {url: 'data:...'}}
+          if (part.type === 'image_url' && part.image_url?.url) {
+            saveImageToCache(content.id, part.image_url.url);
+            return part.image_url.url;
+          }
+          // Gemini 格式: {inline_data: {data: '...', mime_type: '...'}}
+          if (part.inline_data?.data) {
+            const mimeType = part.inline_data.mime_type || 'image/png';
+            const imageData = `data:${mimeType};base64,${part.inline_data.data}`;
+            saveImageToCache(content.id, imageData);
+            return imageData;
+          }
+          // 其他格式: {type: 'image', data: '...'}
+          if (part.type === 'image' && part.data) {
+            const imageData = part.data.startsWith('data:') ? part.data : `data:image/png;base64,${part.data}`;
+            saveImageToCache(content.id, imageData);
+            return imageData;
+          }
+        }
+      }
+
+      // 格式2: content 是字符串
+      if (typeof content_parts === 'string') {
+        // 直接是 data URL
+        if (content_parts.startsWith('data:image')) {
+          saveImageToCache(content.id, content_parts);
+          return content_parts;
+        }
+        // 纯 base64 字符串（长度大于1000且不含空格）
+        if (content_parts.length > 1000 && !content_parts.includes(' ')) {
+          const imageData = `data:image/png;base64,${content_parts}`;
+          saveImageToCache(content.id, imageData);
+          return imageData;
+        }
+        // 即梦图片格式: ![image_0](https://...)
+        const markdownImageMatch = content_parts.match(/!\[.*?\]\((https?:\/\/[^)]+)\)/);
+        if (markdownImageMatch) {
+          const imageUrl = markdownImageMatch[1];
+          console.log('Found image URL from jimeng:', imageUrl);
+          saveImageToCache(content.id, imageUrl);
+          return imageUrl;
+        }
+        // 直接是 URL
+        if (content_parts.startsWith('http')) {
+          saveImageToCache(content.id, content_parts);
+          return content_parts;
+        }
+      }
+
+      console.log('Proxy image generation failed, falling back to native Gemini API...');
+    }
+
+    // 降级使用原生 Gemini API
     const response = await ai.models.generateContent({
       model: 'gemini-3-pro-image-preview',
       contents: {
@@ -74,7 +218,6 @@ export const generateIllustration = async (content: ClassicContent): Promise<str
     for (const part of response.candidates?.[0]?.content?.parts || []) {
       if (part.inlineData) {
         const imageData = `data:image/png;base64,${part.inlineData.data}`;
-        // 存入 localStorage 缓存
         saveImageToCache(content.id, imageData);
         return imageData;
       }
@@ -103,30 +246,68 @@ export const generateLessonScript = async (
   // Convert diaries to string context
   const diaryContext = diaries.map(d => `[${d.date}] ${d.content}`).join('\n');
 
-  const prompt = `
-  [角色]
-  你是"叮当姐姐"，一位温柔有趣的国学启蒙老师。你专门为3-6岁的小朋友讲解中华经典。
+  const prompt = `[角色]
+你是"叮当姐姐"，一位温柔有趣的国学启蒙老师。你专门为3-6岁的小朋友讲解中华经典。
 
-  [任务]
-  1. 为${profileAge}岁的${profileName}讲解以下经典。
-  2. 尝试从孩子的成长记录中找到关联经历。
-  3. 提出一个互动问题。
+[任务]
+为${profileAge}岁的${profileName}逐句讲解以下经典，最后总结道理。
 
-  经典原文：${content.text}
-  孩子姓名：${profileName}
-  成长记录：
-  ${diaryContext}
+经典原文：${content.text}
+孩子姓名：${profileName}
+成长记录：
+${diaryContext || '暂无记录'}
 
-  请输出一个JSON对象，包含以下字段：
-  - explanation: 讲解文本。先用白话解释意思（3-5句）。如果成长记录中有相关经历，请用"${profileName}，你还记得..."开头，把经历和道理联系起来。如果没有相关经历，只讲道理。
-  - question: 互动问题。引导孩子思考的开放式问题。
+[讲解格式要求]
+1. **逐句讲解**：把原文拆成2-4个短句，每句用简单的话解释意思
+   - 格式："XXX"是什么意思呢？就是说...
+2. **总结道理**：用1-2句话总结整段话教给我们的道理
+3. **联系生活**：如果成长记录中有相关经历，用"${profileName}，你还记得..."把经历和道理联系起来
 
-  返回格式必须是纯JSON。
-  `;
+请输出一个JSON对象，包含以下字段：
+- explanation: 完整的讲解文本（包含逐句讲解+总结+联系生活）
+- question: 互动问题。引导孩子思考的开放式问题。
+
+返回格式必须是纯JSON。`;
 
   try {
+    // 优先使用中转 API
+    if (USE_PROXY_API) {
+      console.log('Using proxy API for lesson script...');
+      const response = await fetch(`${OPENAI_BASE_URL}/chat/completions`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${OPENAI_API_KEY}`
+        },
+        body: JSON.stringify({
+          model: PROXY_TEXT_MODEL,
+          messages: [
+            { role: 'system', content: '你是一个儿童国学启蒙助手，输出格式必须是纯JSON。' },
+            { role: 'user', content: prompt }
+          ],
+          temperature: 0.7,
+          max_tokens: 500
+        })
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('Proxy API error:', errorText);
+        throw new Error('Proxy API request failed');
+      }
+
+      const data = await response.json();
+      const text = data.choices?.[0]?.message?.content || '{}';
+      const jsonMatch = text.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        return JSON.parse(jsonMatch[0]) as LessonScript;
+      }
+      throw new Error('Invalid JSON response');
+    }
+
+    // 使用原生 Gemini API
     const response = await ai.models.generateContent({
-      model: 'gemini-2.0-flash',
+      model: 'gemini-3-flash-preview',
       contents: prompt,
       config: {
         responseMimeType: "application/json",
@@ -232,12 +413,24 @@ let currentAudio: HTMLAudioElement | null = null;
 
 // 格式化文本用于 TTS，添加正确的断句
 const formatTextForTTS = (text: string): string => {
-  // 将中文字符之间的空格替换为逗号，确保正确断句
-  // 例如："父母呼 应勿缓" → "父母呼，应勿缓"
-  return text.replace(/([一-龥])\s+([一-龥])/g, '$1，$2');
+  // 1. 将中文字符之间的空格替换为逗号+空格，确保正确断句
+  // 例如："父母呼 应勿缓" → "父母呼， 应勿缓"
+  let formatted = text.replace(/([一-龥])\s+([一-龥])/g, '$1， $2');
+
+  // 2. 确保逗号后有空格（增强断句效果）
+  formatted = formatted.replace(/，(?!\s)/g, '， ');
+
+  // 3. 确保句号后有空格
+  formatted = formatted.replace(/。(?!\s)/g, '。 ');
+
+  return formatted;
 };
 
-export const speakWithMiniMax = async (text: string, onEnd?: () => void): Promise<void> => {
+export const speakWithMiniMax = async (
+  text: string,
+  onEnd?: () => void,
+  onAudioGenerated?: (audioData: ArrayBuffer) => void
+): Promise<void> => {
   // 停止之前的音频
   if (currentAudio) {
     currentAudio.pause();
@@ -251,6 +444,8 @@ export const speakWithMiniMax = async (text: string, onEnd?: () => void): Promis
   // 使用 MiniMax TTS
   const audioData = await generateSpeechMiniMax(formattedText);
   if (audioData && audioData.byteLength > 1000) {
+    // 回调返回音频数据用于缓存
+    onAudioGenerated?.(audioData);
     currentAudio = playMiniMaxAudio(audioData, onEnd);
     return;
   }
@@ -346,22 +541,67 @@ export const analyzeAnswerAndEncourage = async (
   question: string,
   profileName: string
 ): Promise<string> => {
+  const prompt = `问题：${question}
+${profileName}的回答：（请参考音频内容）
+
+给${profileName}正向反馈：
+1. 无论回答什么，都要肯定和鼓励。
+2. 语气温暖，像夸奖自己的孩子。
+3. 最后加上小红花奖励："送你一朵小红花！"
+4. 控制在2-3句话。`;
+
   try {
     const base64Audio = await blobToBase64(audioBlob);
 
-    const prompt = `
-    问题：${question}
-    ${profileName}的回答：（请参考音频内容）
+    // 优先使用中转 API
+    if (USE_PROXY_API) {
+      console.log('Using proxy API for audio analysis...');
+      const response = await fetch(`${OPENAI_BASE_URL}/chat/completions`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${OPENAI_API_KEY}`
+        },
+        body: JSON.stringify({
+          model: PROXY_TEXT_MODEL,
+          messages: [
+            {
+              role: 'user',
+              content: [
+                {
+                  type: 'input_audio',
+                  input_audio: {
+                    data: base64Audio,
+                    format: audioBlob.type.includes('webm') ? 'webm' : 'wav'
+                  }
+                },
+                {
+                  type: 'text',
+                  text: prompt
+                }
+              ]
+            }
+          ]
+        })
+      });
 
-    给${profileName}正向反馈：
-    1. 无论回答什么，都要肯定和鼓励。
-    2. 语气温暖，像夸奖自己的孩子。
-    3. 最后加上小红花奖励："送你一朵小红花！"
-    4. 控制在2-3句话。
-    `;
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('Proxy audio API error:', errorText);
+        throw new Error('Proxy audio API failed');
+      }
 
+      const data = await response.json();
+      const text = data.choices?.[0]?.message?.content;
+      if (text) {
+        return text;
+      }
+      throw new Error('No text in proxy response');
+    }
+
+    // 使用原生 Gemini API
     const response = await ai.models.generateContent({
-        model: 'gemini-2.0-flash',
+        model: 'gemini-3-flash-preview',
         contents: {
             parts: [
                 {

@@ -16,12 +16,23 @@ export interface AudioPlayerHandle {
 const AudioPlayer = forwardRef<AudioPlayerHandle, AudioPlayerProps>(({ audioBuffer, text, autoPlay, onEnded }, ref) => {
   const [isPlaying, setIsPlaying] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const cachedAudioRef = useRef<ArrayBuffer | null>(null);
+  const audioElementRef = useRef<HTMLAudioElement | null>(null);
 
   useEffect(() => {
     return () => {
       stopSpeaking();
+      if (audioElementRef.current) {
+        audioElementRef.current.pause();
+        audioElementRef.current = null;
+      }
     };
   }, []);
+
+  // 当 text 变化时，清除缓存
+  useEffect(() => {
+    cachedAudioRef.current = null;
+  }, [text]);
 
   useEffect(() => {
     if (autoPlay && text) {
@@ -31,10 +42,43 @@ const AudioPlayer = forwardRef<AudioPlayerHandle, AudioPlayerProps>(({ audioBuff
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [text]);
 
+  // 播放缓存的音频
+  const playCachedAudio = (audioData: ArrayBuffer) => {
+    const blob = new Blob([audioData], { type: 'audio/mp3' });
+    const url = URL.createObjectURL(blob);
+    const audio = new Audio(url);
+    audioElementRef.current = audio;
+
+    audio.onended = () => {
+      URL.revokeObjectURL(url);
+      setIsPlaying(false);
+      onEnded?.();
+    };
+
+    audio.onerror = () => {
+      URL.revokeObjectURL(url);
+      setIsPlaying(false);
+      onEnded?.();
+    };
+
+    audio.play();
+  };
+
   const playAudio = async () => {
     if (!text) return;
 
     stopSpeaking();
+    if (audioElementRef.current) {
+      audioElementRef.current.pause();
+    }
+
+    // 如果有缓存，直接播放
+    if (cachedAudioRef.current) {
+      setIsPlaying(true);
+      playCachedAudio(cachedAudioRef.current);
+      return;
+    }
+
     setIsLoading(true);
     setIsPlaying(true);
 
@@ -42,6 +86,9 @@ const AudioPlayer = forwardRef<AudioPlayerHandle, AudioPlayerProps>(({ audioBuff
       setIsPlaying(false);
       setIsLoading(false);
       onEnded?.();
+    }, (audioData) => {
+      // 缓存音频数据
+      cachedAudioRef.current = audioData;
     });
 
     setIsLoading(false);

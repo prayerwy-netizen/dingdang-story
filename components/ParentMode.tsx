@@ -1,5 +1,11 @@
-import React, { useState, useRef } from 'react';
-import { DiaryEntry, ChildProfile, ClassicContent, ParentTab } from '../types';
+import React, { useState, useRef, useEffect } from 'react';
+import { DiaryEntry, ChildProfile, ClassicContent, ParentTab, AIProvider } from '../types';
+import { getAIProvider, setAIProvider, getAvailableProviders } from '../services/aiService';
+import { getPendingCount } from '../services/requestService';
+import QuickRecord from './QuickRecord';
+import TaskManager from './TaskManager';
+import GiftManager from './GiftManager';
+import ApprovalCenter from './ApprovalCenter';
 
 interface ParentModeProps {
   profile: ChildProfile;
@@ -7,6 +13,7 @@ interface ParentModeProps {
   customContents: ClassicContent[];
   currentLessonIndex: number;
   totalLessons: number;
+  familyCode: string;
   onAddDiary: (entry: DiaryEntry) => void;
   onDeleteDiary: (id: string) => void;
   onUpdateProfile: (updates: Partial<ChildProfile>) => void;
@@ -49,6 +56,7 @@ const ParentMode: React.FC<ParentModeProps> = ({
   customContents,
   currentLessonIndex,
   totalLessons,
+  familyCode,
   onAddDiary,
   onDeleteDiary,
   onUpdateProfile,
@@ -59,6 +67,19 @@ const ParentMode: React.FC<ParentModeProps> = ({
   onExit
 }) => {
   const [activeTab, setActiveTab] = useState<ParentTab>(ParentTab.DIARY);
+  const [pendingApprovalCount, setPendingApprovalCount] = useState(0);
+
+  // 加载待审批数量
+  useEffect(() => {
+    const loadPendingCount = async () => {
+      if (familyCode) {
+        const count = await getPendingCount(familyCode);
+        setPendingApprovalCount(count);
+      }
+    };
+    loadPendingCount();
+    // 每次切换 Tab 也刷新
+  }, [familyCode, activeTab]);
 
   // Diary State
   const [diaryId, setDiaryId] = useState<string | null>(null);
@@ -70,6 +91,8 @@ const ParentMode: React.FC<ParentModeProps> = ({
   // Settings State
   const [editName, setEditName] = useState(profile.name);
   const [editAge, setEditAge] = useState(profile.age);
+  const [aiProvider, setAiProvider] = useState<AIProvider>(getAIProvider());
+  const availableProviders = getAvailableProviders();
 
   // Custom Content State
   const [showAddContent, setShowAddContent] = useState(false);
@@ -199,17 +222,38 @@ const ParentMode: React.FC<ParentModeProps> = ({
         </div>
       </div>
 
-      {/* Tabs */}
-      <div className="flex gap-2 p-4 md:px-6">
-        <button onClick={() => setActiveTab(ParentTab.DIARY)} className={tabClass(ParentTab.DIARY)}>
-          📝 日记
-        </button>
-        <button onClick={() => setActiveTab(ParentTab.CUSTOM_CONTENT)} className={tabClass(ParentTab.CUSTOM_CONTENT)}>
-          ✨ 内容
-        </button>
-        <button onClick={() => setActiveTab(ParentTab.SETTINGS)} className={tabClass(ParentTab.SETTINGS)}>
-          ⚙️ 设置
-        </button>
+      {/* Tabs - 两排显示 */}
+      <div className="p-4 md:px-6 space-y-2">
+        <div className="flex gap-2">
+          <button onClick={() => setActiveTab(ParentTab.DIARY)} className={tabClass(ParentTab.DIARY)}>
+            📝 日记
+          </button>
+          <button onClick={() => setActiveTab(ParentTab.QUICK_RECORD)} className={tabClass(ParentTab.QUICK_RECORD)}>
+            ⚡ 记账
+          </button>
+          <button onClick={() => setActiveTab(ParentTab.APPROVAL)} className={`${tabClass(ParentTab.APPROVAL)} relative`}>
+            ✅ 审批
+            {pendingApprovalCount > 0 && (
+              <span className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 text-white text-xs rounded-full flex items-center justify-center">
+                {pendingApprovalCount}
+              </span>
+            )}
+          </button>
+        </div>
+        <div className="flex gap-2">
+          <button onClick={() => setActiveTab(ParentTab.TASK_MANAGER)} className={tabClass(ParentTab.TASK_MANAGER)}>
+            📋 任务
+          </button>
+          <button onClick={() => setActiveTab(ParentTab.GIFT_MANAGER)} className={tabClass(ParentTab.GIFT_MANAGER)}>
+            🎁 礼物
+          </button>
+          <button onClick={() => setActiveTab(ParentTab.CUSTOM_CONTENT)} className={tabClass(ParentTab.CUSTOM_CONTENT)}>
+            ✨ 内容
+          </button>
+          <button onClick={() => setActiveTab(ParentTab.SETTINGS)} className={tabClass(ParentTab.SETTINGS)}>
+            ⚙️ 设置
+          </button>
+        </div>
       </div>
 
       {/* Content */}
@@ -494,6 +538,26 @@ const ParentMode: React.FC<ParentModeProps> = ({
             </div>
           )}
 
+          {/* ===== 快速记账 Tab ===== */}
+          {activeTab === ParentTab.QUICK_RECORD && (
+            <QuickRecord familyCode={familyCode} />
+          )}
+
+          {/* ===== 任务管理 Tab ===== */}
+          {activeTab === ParentTab.TASK_MANAGER && (
+            <TaskManager familyCode={familyCode} />
+          )}
+
+          {/* ===== 礼物管理 Tab ===== */}
+          {activeTab === ParentTab.GIFT_MANAGER && (
+            <GiftManager familyCode={familyCode} />
+          )}
+
+          {/* ===== 审批中心 Tab ===== */}
+          {activeTab === ParentTab.APPROVAL && (
+            <ApprovalCenter familyCode={familyCode} />
+          )}
+
           {/* ===== 设置 Tab ===== */}
           {activeTab === ParentTab.SETTINGS && (
             <div className="clay-card p-5 md:p-6">
@@ -583,6 +647,60 @@ const ParentMode: React.FC<ParentModeProps> = ({
                     </svg>
                     重置课程（从第一课开始）
                   </button>
+                </div>
+
+                {/* AI 设置 */}
+                <div className="pt-6 border-t border-primary-100">
+                  <h3 className="font-heading text-primary-700 mb-4">AI 引擎</h3>
+                  <p className="text-primary-400 text-sm mb-4">选择用于生成配图和讲解的 AI 服务</p>
+                  <div className="space-y-3">
+                    {availableProviders.map((provider) => (
+                      <button
+                        key={provider.id}
+                        onClick={() => {
+                          if (provider.available) {
+                            setAiProvider(provider.id);
+                            setAIProvider(provider.id);
+                          }
+                        }}
+                        disabled={!provider.available}
+                        className={`w-full p-4 rounded-xl border-2 text-left transition-all cursor-pointer ${
+                          aiProvider === provider.id
+                            ? 'border-primary-500 bg-primary-50'
+                            : provider.available
+                              ? 'border-primary-200 hover:border-primary-300 bg-white'
+                              : 'border-gray-200 bg-gray-50 opacity-50 cursor-not-allowed'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-3">
+                            <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${
+                              aiProvider === provider.id ? 'border-primary-500' : 'border-primary-300'
+                            }`}>
+                              {aiProvider === provider.id && (
+                                <div className="w-3 h-3 rounded-full bg-primary-500" />
+                              )}
+                            </div>
+                            <div>
+                              <p className="font-heading text-primary-800">{provider.name}</p>
+                              {!provider.available && (
+                                <p className="text-xs text-red-400">未配置 API Key</p>
+                              )}
+                            </div>
+                          </div>
+                          {provider.id === 'gemini' && (
+                            <span className="text-xs bg-blue-100 text-blue-600 px-2 py-1 rounded-full">国际</span>
+                          )}
+                          {provider.id === 'volcengine' && (
+                            <span className="text-xs bg-red-100 text-red-600 px-2 py-1 rounded-full">国内</span>
+                          )}
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                  <p className="text-primary-300 text-xs mt-3">
+                    提示：国内用户推荐使用火山引擎，速度更快
+                  </p>
                 </div>
 
                 {/* 家庭码管理 */}

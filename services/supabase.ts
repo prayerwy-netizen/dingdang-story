@@ -11,12 +11,19 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
 // 数据库表名常量
 export const TABLES = {
+  // 学习系统表
   PROFILES: 'dingdang_study_profiles',
   DIARIES: 'dingdang_study_diaries',
   COURSES: 'dingdang_study_courses',
   COURSE_IMAGES: 'dingdang_study_course_images',
   CUSTOM_CONTENTS: 'dingdang_study_custom_contents',
   LEARNING_RECORDS: 'dingdang_study_learning_records',
+  // 打卡系统表
+  TASKS: 'dingdang_tasks',
+  GIFTS: 'dingdang_gifts',
+  RECORDS: 'dingdang_records',
+  REQUESTS: 'dingdang_requests',
+  SETTINGS: 'dingdang_settings',
 } as const;
 
 // Storage bucket 名称
