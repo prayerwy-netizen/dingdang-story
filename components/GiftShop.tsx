@@ -2,23 +2,15 @@ import React, { useState, useEffect } from 'react';
 import { Gift, GiftRequest } from '../types';
 import { getEnabledGifts } from '../services/giftService';
 import { createRequest, getRequests } from '../services/requestService';
-import { getTotalScore } from '../services/recordService';
 
 interface GiftShopProps {
   familyCode: string;
-  onClose: () => void;
+  totalPoints: number;
 }
 
-const ChevronLeftIcon = () => (
-  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-  </svg>
-);
-
-const GiftShop: React.FC<GiftShopProps> = ({ familyCode, onClose }) => {
+const GiftShop: React.FC<GiftShopProps> = ({ familyCode, totalPoints }) => {
   const [gifts, setGifts] = useState<Gift[]>([]);
   const [myRequests, setMyRequests] = useState<GiftRequest[]>([]);
-  const [totalScore, setTotalScore] = useState(0);
   const [loading, setLoading] = useState(true);
   const [showRequests, setShowRequests] = useState(false);
 
@@ -28,19 +20,17 @@ const GiftShop: React.FC<GiftShopProps> = ({ familyCode, onClose }) => {
 
   const loadData = async () => {
     setLoading(true);
-    const [giftList, requests, score] = await Promise.all([
+    const [giftList, requests] = await Promise.all([
       getEnabledGifts(familyCode),
       getRequests(familyCode),
-      getTotalScore(familyCode),
     ]);
     setGifts(giftList);
     setMyRequests(requests);
-    setTotalScore(score);
     setLoading(false);
   };
 
   const handleExchange = async (gift: Gift) => {
-    if (totalScore < gift.score) {
+    if (totalPoints < gift.score) {
       alert('积分不足哦~');
       return;
     }
@@ -80,36 +70,24 @@ const GiftShop: React.FC<GiftShopProps> = ({ familyCode, onClose }) => {
       {/* Header */}
       <div className="safe-area-top bg-white/80 backdrop-blur-sm border-b border-primary-100 sticky top-0 z-10">
         <div className="flex items-center justify-between p-4 md:p-6">
-          <button
-            onClick={onClose}
-            className="touch-target flex items-center gap-2 text-primary-600 font-semibold cursor-pointer"
-          >
-            <ChevronLeftIcon />
-            <span className="hidden md:inline">返回</span>
-          </button>
-          <h1 className="font-heading text-xl md:text-2xl text-primary-800">礼物商城</h1>
           <div className="w-12"></div>
+          <h1 className="font-heading text-xl md:text-2xl text-primary-800">礼物商城</h1>
+          <div className="flex items-center gap-2 clay-card px-3 py-1.5">
+            <span className="text-lg">💰</span>
+            <span className="font-heading text-lg text-accent-orange">{totalPoints}</span>
+          </div>
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto p-4 md:p-6">
-        {/* 积分显示 */}
-        <div className="clay-card p-4 mb-6 bg-gradient-to-br from-accent-orange/10 to-candy-peach/30">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <span className="text-3xl">💰</span>
-              <div>
-                <p className="text-primary-500 text-sm">我的小元宝</p>
-                <p className="font-heading text-2xl text-accent-orange">{totalScore}</p>
-              </div>
-            </div>
-            <button
-              onClick={() => setShowRequests(!showRequests)}
-              className="clay-btn-secondary px-4 py-2 rounded-xl text-sm cursor-pointer"
-            >
-              {showRequests ? '查看礼物' : '我的申请'}
-            </button>
-          </div>
+      <div className="flex-1 overflow-y-auto p-4 md:p-6 pb-24">
+        {/* 切换按钮 */}
+        <div className="flex justify-center mb-4">
+          <button
+            onClick={() => setShowRequests(!showRequests)}
+            className="clay-btn-secondary px-6 py-2 rounded-xl text-sm cursor-pointer"
+          >
+            {showRequests ? '查看礼物' : '我的申请'}
+          </button>
         </div>
 
         {loading ? (
@@ -157,7 +135,7 @@ const GiftShop: React.FC<GiftShopProps> = ({ familyCode, onClose }) => {
             ) : (
               <div className="grid grid-cols-2 gap-4">
                 {gifts.map(gift => {
-                  const canAfford = totalScore >= gift.score;
+                  const canAfford = totalPoints >= gift.score;
                   return (
                     <div
                       key={gift.id}
