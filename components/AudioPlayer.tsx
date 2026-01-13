@@ -13,11 +13,18 @@ export interface AudioPlayerHandle {
   stop: () => void;
 }
 
+// 检测是否是移动设备（iOS/Android）
+const isMobileDevice = (): boolean => {
+  return /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+};
+
 const AudioPlayer = forwardRef<AudioPlayerHandle, AudioPlayerProps>(({ audioBuffer, text, autoPlay, onEnded }, ref) => {
   const [isPlaying, setIsPlaying] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [needUserInteraction, setNeedUserInteraction] = useState(false);
   const cachedAudioRef = useRef<ArrayBuffer | null>(null);
   const audioElementRef = useRef<HTMLAudioElement | null>(null);
+  const hasUserInteracted = useRef(false);
 
   useEffect(() => {
     return () => {
@@ -29,15 +36,21 @@ const AudioPlayer = forwardRef<AudioPlayerHandle, AudioPlayerProps>(({ audioBuff
     };
   }, []);
 
-  // 当 text 变化时，清除缓存
+  // 当 text 变化时，清除缓存，重置状态
   useEffect(() => {
     cachedAudioRef.current = null;
+    setNeedUserInteraction(false);
   }, [text]);
 
   useEffect(() => {
     if (autoPlay && text) {
-      const timer = setTimeout(() => playAudio(), 100);
-      return () => clearTimeout(timer);
+      // 在移动设备上，如果还没有用户交互过，显示点击按钮
+      if (isMobileDevice() && !hasUserInteracted.current) {
+        setNeedUserInteraction(true);
+      } else {
+        const timer = setTimeout(() => playAudio(), 100);
+        return () => clearTimeout(timer);
+      }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [text]);
@@ -66,6 +79,10 @@ const AudioPlayer = forwardRef<AudioPlayerHandle, AudioPlayerProps>(({ audioBuff
 
   const playAudio = async () => {
     if (!text) return;
+
+    // 标记用户已经交互过
+    hasUserInteracted.current = true;
+    setNeedUserInteraction(false);
 
     stopSpeaking();
     if (audioElementRef.current) {
@@ -96,6 +113,10 @@ const AudioPlayer = forwardRef<AudioPlayerHandle, AudioPlayerProps>(({ audioBuff
 
   const stopAudio = () => {
     stopSpeaking();
+    if (audioElementRef.current) {
+      audioElementRef.current.pause();
+      audioElementRef.current = null;
+    }
     setIsPlaying(false);
     setIsLoading(false);
   };
@@ -106,6 +127,20 @@ const AudioPlayer = forwardRef<AudioPlayerHandle, AudioPlayerProps>(({ audioBuff
   }));
 
   if (!text) return null;
+
+  // iOS/移动设备首次需要用户点击才能播放音频
+  if (needUserInteraction) {
+    return (
+      <div className="flex justify-center mt-4">
+        <button
+          onClick={playAudio}
+          className="px-6 py-3 rounded-full flex items-center gap-2 bg-accent-orange text-white font-semibold shadow-lg animate-pulse cursor-pointer"
+        >
+          <span className="text-xl">🔊</span> 点击开始播放
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div className="flex justify-center mt-4">

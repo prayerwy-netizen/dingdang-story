@@ -1,5 +1,6 @@
 import { GoogleGenAI, Modality, Type } from "@google/genai";
 import { ClassicContent, DiaryEntry } from "../types";
+import { uploadCourseImage, getCourseImageUrl, checkCourseImageExists } from "./storageService";
 
 const API_KEY = import.meta.env.VITE_GEMINI_API_KEY || process.env.API_KEY || '';
 const ai = new GoogleGenAI({ apiKey: API_KEY });
@@ -11,10 +12,11 @@ const USE_PROXY_API = false;
 const MINIMAX_API_KEY = import.meta.env.VITE_MINIMAX_API_KEY || '';
 const MINIMAX_TTS_URL = 'https://api.minimaxi.com/v1/t2a_v2';
 
-// 图片缓存 - 使用 localStorage 持久化存储
+// 图片缓存 - localStorage 作为本地缓存，云端为主存储
 const IMAGE_CACHE_PREFIX = 'dingdang_img_';
 
-const getImageFromCache = (contentId: string): string | null => {
+// 从本地缓存获取图片（加速加载）
+const getImageFromLocalCache = (contentId: string): string | null => {
   try {
     return localStorage.getItem(IMAGE_CACHE_PREFIX + contentId);
   } catch {
@@ -22,12 +24,12 @@ const getImageFromCache = (contentId: string): string | null => {
   }
 };
 
-const saveImageToCache = (contentId: string, imageData: string): void => {
+// 保存图片到本地缓存
+const saveImageToLocalCache = (contentId: string, imageData: string): void => {
   try {
     localStorage.setItem(IMAGE_CACHE_PREFIX + contentId, imageData);
   } catch (e) {
-    // localStorage 满了，清理旧缓存
-    console.warn('Failed to cache image, clearing old cache:', e);
+    console.warn('Failed to cache image locally:', e);
     clearOldImageCache();
     try {
       localStorage.setItem(IMAGE_CACHE_PREFIX + contentId, imageData);
@@ -37,24 +39,78 @@ const saveImageToCache = (contentId: string, imageData: string): void => {
   }
 };
 
-// 清理旧的图片缓存
+// 清理旧的本地图片缓存
 const clearOldImageCache = (): void => {
   const keys = Object.keys(localStorage).filter(k => k.startsWith(IMAGE_CACHE_PREFIX));
-  // 保留最新的 10 张，删除其他的
-  if (keys.length > 10) {
-    keys.slice(0, keys.length - 10).forEach(k => localStorage.removeItem(k));
+  if (keys.length > 20) {
+    keys.slice(0, keys.length - 20).forEach(k => localStorage.removeItem(k));
   }
+};
+
+// 从云端获取图片
+const getImageFromCloud = async (contentId: string): Promise<string | null> => {
+  try {
+    const exists = await checkCourseImageExists(contentId);
+    if (exists) {
+      const url = getCourseImageUrl(contentId);
+      console.log('Found image in cloud for:', contentId);
+      return url;
+    }
+    return null;
+  } catch (error) {
+    console.error('Error checking cloud image:', error);
+    return null;
+  }
+};
+
+// 上传图片到云端
+const saveImageToCloud = async (contentId: string, imageData: string): Promise<string | null> => {
+  try {
+    console.log('Uploading image to cloud for:', contentId);
+    const result = await uploadCourseImage(contentId, imageData);
+    if (result.success && result.url) {
+      console.log('Image uploaded successfully:', result.url);
+      return result.url;
+    }
+    console.error('Failed to upload image:', result.error);
+    return null;
+  } catch (error) {
+    console.error('Error uploading image to cloud:', error);
+    return null;
+  }
+};
+
+// 保存图片到云端和本地缓存（新生成的图片使用）
+const saveImageToCache = async (contentId: string, imageData: string): Promise<void> => {
+  // 先保存到本地缓存（同步，快速）
+  saveImageToLocalCache(contentId, imageData);
+
+  // 异步上传到云端（不阻塞返回）
+  saveImageToCloud(contentId, imageData).catch(err => {
+    console.warn('Background cloud upload failed:', err);
+  });
 };
 
 // --- Image Generation ---
 
 export const generateIllustration = async (content: ClassicContent): Promise<string | null> => {
-  // 检查缓存
-  const cachedImage = getImageFromCache(content.id);
-  if (cachedImage) {
-    console.log('Using cached image for:', content.id);
-    return cachedImage;
+  // 1. 先检查本地缓存（最快）
+  const localCached = getImageFromLocalCache(content.id);
+  if (localCached) {
+    console.log('Using local cached image for:', content.id);
+    return localCached;
   }
+
+  // 2. 检查云端存储
+  const cloudImage = await getImageFromCloud(content.id);
+  if (cloudImage) {
+    // 云端有图片，保存到本地缓存加速下次加载
+    saveImageToLocalCache(content.id, cloudImage);
+    return cloudImage;
+  }
+
+  // 3. 云端也没有，需要生成新图片
+  console.log('No cached image found, generating new image for:', content.id);
 
   const prompt = `生成一张儿童国学启蒙配图：
 
