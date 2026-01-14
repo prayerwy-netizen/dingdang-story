@@ -304,7 +304,7 @@ export const generateLessonScript = async (
   const diaryContext = diaries.map(d => `[${d.date}] ${d.content}`).join('\n');
 
   const prompt = `[角色]
-你是"叮当姐姐"，一位温柔有趣的国学启蒙老师。你专门为3-6岁的小朋友讲解中华经典。
+你是"姐姐"，一位温柔有趣的国学启蒙老师。你专门为3-6岁的小朋友讲解中华经典。
 
 [任务]
 为${profileAge}岁的${profileName}逐句讲解以下经典，最后总结道理。
@@ -315,13 +315,16 @@ export const generateLessonScript = async (
 ${diaryContext || '暂无记录'}
 
 [讲解格式要求]
-1. **逐句讲解**：把原文拆成2-4个短句，每句用简单的话解释意思
+1. **开场**：用"${profileName}，姐姐给你讲故事啦！"开始
+2. **逐句讲解**：把原文拆成2-4个短句，每句用简单的话解释意思
    - 格式："XXX"是什么意思呢？就是说...
-2. **总结道理**：用1-2句话总结整段话教给我们的道理
-3. **联系生活**：如果成长记录中有相关经历，用"${profileName}，你还记得..."把经历和道理联系起来
+3. **总结道理**：用1-2句话总结整段话教给我们的道理
+4. **联系生活**：如果成长记录中有相关经历，用"${profileName}，你还记得..."把经历和道理联系起来
+
+注意：始终用"${profileName}"称呼孩子，用"姐姐"自称，不要说"宝贝"或"叮当姐姐"。
 
 请输出一个JSON对象，包含以下字段：
-- explanation: 完整的讲解文本（包含逐句讲解+总结+联系生活）
+- explanation: 完整的讲解文本（包含开场+逐句讲解+总结+联系生活）
 - question: 互动问题。引导孩子思考的开放式问题。
 
 返回格式必须是纯JSON。`;
@@ -434,6 +437,13 @@ export const generateSpeechMiniMax = async (text: string): Promise<ArrayBuffer |
 
     // MiniMax 返回的是 JSON，包含十六进制编码的音频
     const json = await response.json();
+
+    // 检查是否有错误
+    if (json.base_resp?.status_code !== 0 && json.base_resp?.status_code !== undefined) {
+      console.error('MiniMax TTS API error:', json.base_resp);
+      return null;
+    }
+
     if (json.data?.audio) {
       // 将十六进制字符串转换为 ArrayBuffer
       const hexString = json.data.audio;
