@@ -10,7 +10,8 @@ const USE_PROXY_API = false;
 
 // MiniMax TTS API 配置
 const MINIMAX_API_KEY = import.meta.env.VITE_MINIMAX_API_KEY || '';
-const MINIMAX_TTS_URL = 'https://api.minimaxi.com/v1/t2a_v2';
+const MINIMAX_GROUP_ID = import.meta.env.VITE_MINIMAX_GROUP_ID || '';
+const MINIMAX_TTS_URL = `https://api.minimax.chat/v1/t2a_v2?GroupId=${MINIMAX_GROUP_ID}`;
 
 // 图片缓存 - localStorage 作为本地缓存，云端为主存储
 const IMAGE_CACHE_PREFIX = 'dingdang_img_';
@@ -399,22 +400,29 @@ export const generateSpeechMiniMax = async (text: string): Promise<ArrayBuffer |
         'Authorization': `Bearer ${MINIMAX_API_KEY}`
       },
       body: JSON.stringify({
-        model: 'speech-2.6-hd',
+        model: 'speech-2.6-turbo',
         text: text,
         stream: false,
+        timbre_weights: [
+          {
+            voice_id: 'Chinese (Mandarin)_Gentle_Senior',
+            weight: 100
+          }
+        ],
         voice_setting: {
-          voice_id: 'Sweet_Girl', // 甜美女孩
-          speed: 0.9,
+          voice_id: '',
+          speed: 0.8,
           vol: 1,
           pitch: 0,
-          emotion: 'happy'
+          emotion: 'happy',
+          latex_read: false
         },
         audio_setting: {
           sample_rate: 32000,
           bitrate: 128000,
-          format: 'mp3',
-          channel: 1
-        }
+          format: 'mp3'
+        },
+        language_boost: 'auto'
       })
     });
 
