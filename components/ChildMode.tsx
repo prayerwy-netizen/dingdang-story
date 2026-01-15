@@ -183,6 +183,7 @@ const ChildMode: React.FC<ChildModeProps> = ({
 
   const handleTouchStart = (e: TouchEvent) => {
     touchStartX.current = e.touches[0].clientX;
+    touchEndX.current = e.touches[0].clientX; // 重置，避免点击时误判为滑动
   };
 
   const handleTouchMove = (e: TouchEvent) => {
@@ -210,18 +211,18 @@ const ChildMode: React.FC<ChildModeProps> = ({
     setLearningState(LearningState.LOADING_ASSETS);
 
     try {
+      // 并行启动所有任务：图片、脚本生成
       const imagePromise = generateIllustration(content);
-      const script = await generateLessonScript(content, profile.name, profile.age, diaries);
-      setCurrentScript(script);
+      const scriptPromise = generateLessonScript(content, profile.name, profile.age, diaries);
 
-      const explanationBufferPromise = generateSpeech(script.explanation);
-      const questionBufferPromise = generateSpeech(script.question);
-
-      const [img, expAudio, qAudio] = await Promise.all([imagePromise, explanationBufferPromise, questionBufferPromise]);
+      // 等待图片和脚本完成（它们是独立的）
+      const [img, script] = await Promise.all([imagePromise, scriptPromise]);
 
       if (img) setIllustration(img);
-      if (expAudio) setExplanationAudio(expAudio);
-      if (qAudio) setQuestionAudio(qAudio);
+      setCurrentScript(script);
+
+      // 脚本完成后，音频会在播放时实时生成（MiniMax TTS）
+      // 不需要预先生成音频缓冲区
 
       // 先朗读古诗内容，再讲解
       setLearningState(LearningState.READING_CONTENT);
