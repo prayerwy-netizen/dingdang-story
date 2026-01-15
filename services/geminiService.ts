@@ -240,7 +240,7 @@ ${diaryContext || '暂无记录'}
         }],
         generationConfig: {
           temperature: 0.7,
-          maxOutputTokens: 1000
+          maxOutputTokens: 2000
         }
       })
     });
@@ -253,14 +253,23 @@ ${diaryContext || '暂无记录'}
 
     const data = await response.json();
     const text = data.candidates?.[0]?.content?.parts?.[0]?.text || '{}';
-    console.log('[LessonScript] Raw response:', text.substring(0, 200));
+    console.log('[LessonScript] Raw response:', text.substring(0, 300));
 
+    // 尝试解析完整 JSON
     const jsonMatch = text.match(/\{[\s\S]*\}/);
     if (jsonMatch) {
       try {
         return JSON.parse(jsonMatch[0]) as LessonScript;
-      } catch (parseError) {
-        console.error('[LessonScript] JSON parse error:', parseError, 'Content:', jsonMatch[0].substring(0, 200));
+      } catch {
+        // JSON 不完整，尝试提取 explanation 字段
+        const explanationMatch = text.match(/"explanation"\s*:\s*"([^"]*(?:\\.[^"]*)*)"/);
+        if (explanationMatch) {
+          console.log('[LessonScript] Extracted explanation from incomplete JSON');
+          return {
+            explanation: explanationMatch[1].replace(/\\"/g, '"').replace(/\\n/g, '\n'),
+            question: "你觉得这个故事告诉我们什么道理呢？"
+          };
+        }
         throw new Error('JSON parse failed');
       }
     }
