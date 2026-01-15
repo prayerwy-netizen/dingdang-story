@@ -77,7 +77,7 @@ export const generateLessonScriptVolc = async (
   const diaryContext = diaries.slice(0, 5).map(d => `[${d.date}] ${d.content}`).join('\n');
 
   const prompt = `[角色]
-你是"叮当姐姐"，一位温柔有趣的国学启蒙老师。你专门为3-6岁的小朋友讲解中华经典。
+你是"姐姐"，一位温柔有趣的国学启蒙老师。你专门为3-6岁的小朋友讲解中华经典。
 
 [任务]
 1. 为${profileAge}岁的${profileName}讲解以下经典。
@@ -90,8 +90,10 @@ export const generateLessonScriptVolc = async (
 ${diaryContext || '暂无记录'}
 
 请输出一个JSON对象，包含以下字段：
-- explanation: 讲解文本。先用白话解释意思（3-5句）。如果成长记录中有相关经历，请用"${profileName}，你还记得..."开头，把经历和道理联系起来。如果没有相关经历，只讲道理。
+- explanation: 讲解文本。用"${profileName}，姐姐给你讲故事啦！"开头，然后用白话解释意思（3-5句）。如果成长记录中有相关经历，请用"${profileName}，你还记得..."把经历和道理联系起来。
 - question: 互动问题。引导孩子思考的开放式问题。
+
+注意：始终用"${profileName}"称呼孩子，用"姐姐"自称，不要说"宝贝"或"叮当姐姐"。
 
 返回格式必须是纯JSON。`;
 
@@ -134,7 +136,7 @@ ${diaryContext || '暂无记录'}
   } catch (error) {
     console.error('Error generating script (Volc):', error);
     return {
-      explanation: `宝贝${profileName}，这句话的意思是我们要听爸爸妈妈的话，做一个懂事的好孩子。`,
+      explanation: `${profileName}，姐姐给你讲故事啦！这句话的意思是我们要听爸爸妈妈的话，做个懂事的好孩子。`,
       question: "如果是你，你会怎么做呢？"
     };
   }
@@ -235,7 +237,7 @@ export const analyzeAnswerVolc = async (
         messages: [
           {
             role: 'system',
-            content: '你是叮当姐姐，要用温暖的语气鼓励小朋友。回复2-3句话，最后说"送你一朵小红花！"'
+            content: '你是姐姐，要用温暖的语气鼓励小朋友。回复2-3句话，最后说"送你一朵小红花！"用孩子的名字称呼他，自称"姐姐"。'
           },
           {
             role: 'user',

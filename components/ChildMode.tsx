@@ -544,7 +544,7 @@ const ChildMode: React.FC<ChildModeProps> = ({
                     </div>
                     <AudioPlayer
                       audioBuffer={null}
-                      text={`${profile.name}， 我们今天学的是， ${selectedContent.title}。   ${selectedContent.text}`}
+                      text={`${profile.name}，我们今天学的是，${selectedContent.title}。\n\n跟我一起读。\n\n${selectedContent.text}`}
                       autoPlay={true}
                       onEnded={handleReadingEnded}
                     />

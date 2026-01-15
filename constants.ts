@@ -430,9 +430,11 @@ export const CATEGORY_INFO = {
 // 获取今日内容的索引（基于日期计算，确保每天内容不同）
 export const getTodayContentIndex = (library: ClassicContent[]): number => {
   const today = new Date();
-  const startOfYear = new Date(today.getFullYear(), 0, 0);
-  const diff = today.getTime() - startOfYear.getTime();
-  const dayOfYear = Math.floor(diff / (1000 * 60 * 60 * 24));
+  // 使用本地日期计算，避免时区问题
+  const startOfYear = new Date(today.getFullYear(), 0, 1); // 1月1日
+  const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+  const diff = todayStart.getTime() - startOfYear.getTime();
+  const dayOfYear = Math.floor(diff / (1000 * 60 * 60 * 24)) + 1; // +1 因为1月1日是第1天
   return dayOfYear % library.length;
 };
 

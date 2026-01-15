@@ -18,13 +18,38 @@ const isMobileDevice = (): boolean => {
   return /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
 };
 
+// 全局标记：用户是否已经交互过（整个会话中只需要一次）
+let globalHasUserInteracted = false;
+
+// 解锁音频播放（iOS 需要在用户交互时触发）
+const unlockAudio = () => {
+  if (globalHasUserInteracted) return;
+  globalHasUserInteracted = true;
+
+  // 创建并播放一个静音音频来解锁 AudioContext
+  try {
+    const AudioContext = window.AudioContext || (window as unknown as { webkitAudioContext: typeof window.AudioContext }).webkitAudioContext;
+    if (AudioContext) {
+      const ctx = new AudioContext();
+      const buffer = ctx.createBuffer(1, 1, 22050);
+      const source = ctx.createBufferSource();
+      source.buffer = buffer;
+      source.connect(ctx.destination);
+      source.start(0);
+      ctx.resume();
+    }
+  } catch (e) {
+    console.log('Audio unlock failed:', e);
+  }
+};
+
 const AudioPlayer = forwardRef<AudioPlayerHandle, AudioPlayerProps>(({ audioBuffer, text, autoPlay, onEnded }, ref) => {
   const [isPlaying, setIsPlaying] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [needUserInteraction, setNeedUserInteraction] = useState(false);
+  const [debugInfo, setDebugInfo] = useState<string>(''); // 调试信息
   const cachedAudioRef = useRef<ArrayBuffer | null>(null);
   const audioElementRef = useRef<HTMLAudioElement | null>(null);
-  const hasUserInteracted = useRef(false);
 
   useEffect(() => {
     return () => {
@@ -45,7 +70,7 @@ const AudioPlayer = forwardRef<AudioPlayerHandle, AudioPlayerProps>(({ audioBuff
   useEffect(() => {
     if (autoPlay && text) {
       // 在移动设备上，如果还没有用户交互过，显示点击按钮
-      if (isMobileDevice() && !hasUserInteracted.current) {
+      if (isMobileDevice() && !globalHasUserInteracted) {
         setNeedUserInteraction(true);
       } else {
         const timer = setTimeout(() => playAudio(), 100);
@@ -63,25 +88,42 @@ const AudioPlayer = forwardRef<AudioPlayerHandle, AudioPlayerProps>(({ audioBuff
     audioElementRef.current = audio;
 
     audio.onended = () => {
+      setDebugInfo('缓存音频播放完成');
       URL.revokeObjectURL(url);
       setIsPlaying(false);
       onEnded?.();
     };
 
-    audio.onerror = () => {
+    audio.onerror = (e) => {
+      setDebugInfo(`缓存音频错误: ${e}`);
       URL.revokeObjectURL(url);
       setIsPlaying(false);
       onEnded?.();
     };
 
-    audio.play();
+    // 移动端需要处理 play() 返回的 Promise
+    const playPromise = audio.play();
+    if (playPromise !== undefined) {
+      playPromise
+        .then(() => {
+          setDebugInfo('缓存音频开始播放');
+        })
+        .catch((error) => {
+          setDebugInfo(`缓存播放失败: ${error.message}`);
+          URL.revokeObjectURL(url);
+          setIsPlaying(false);
+          onEnded?.();
+        });
+    }
   };
 
   const playAudio = async () => {
     if (!text) return;
 
-    // 标记用户已经交互过
-    hasUserInteracted.current = true;
+    setDebugInfo('开始播放...');
+
+    // 标记用户已经交互过，解锁音频播放
+    unlockAudio();
     setNeedUserInteraction(false);
 
     stopSpeaking();
@@ -91,6 +133,7 @@ const AudioPlayer = forwardRef<AudioPlayerHandle, AudioPlayerProps>(({ audioBuff
 
     // 如果有缓存，直接播放
     if (cachedAudioRef.current) {
+      setDebugInfo('使用缓存播放');
       setIsPlaying(true);
       playCachedAudio(cachedAudioRef.current);
       return;
@@ -98,15 +141,22 @@ const AudioPlayer = forwardRef<AudioPlayerHandle, AudioPlayerProps>(({ audioBuff
 
     setIsLoading(true);
     setIsPlaying(true);
+    setDebugInfo('调用 MiniMax API...');
 
-    await speakWithMiniMax(text, () => {
-      setIsPlaying(false);
-      setIsLoading(false);
-      onEnded?.();
-    }, (audioData) => {
-      // 缓存音频数据
-      cachedAudioRef.current = audioData;
-    });
+    try {
+      await speakWithMiniMax(text, () => {
+        setDebugInfo('播放完成');
+        setIsPlaying(false);
+        setIsLoading(false);
+        onEnded?.();
+      }, (audioData) => {
+        // 缓存音频数据
+        setDebugInfo(`音频数据: ${audioData.byteLength} bytes`);
+        cachedAudioRef.current = audioData;
+      });
+    } catch (e) {
+      setDebugInfo(`错误: ${e}`);
+    }
 
     setIsLoading(false);
   };
@@ -143,7 +193,7 @@ const AudioPlayer = forwardRef<AudioPlayerHandle, AudioPlayerProps>(({ audioBuff
   }
 
   return (
-    <div className="flex justify-center mt-4">
+    <div className="flex flex-col items-center mt-4">
       <button
         onClick={isPlaying ? stopAudio : playAudio}
         disabled={isLoading}
@@ -165,6 +215,12 @@ const AudioPlayer = forwardRef<AudioPlayerHandle, AudioPlayerProps>(({ audioBuff
           </>
         )}
       </button>
+      {/* 调试信息 - 手机端可见 */}
+      {debugInfo && (
+        <div className="mt-2 text-xs text-gray-500 bg-gray-100 px-3 py-1 rounded">
+          {debugInfo}
+        </div>
+      )}
     </div>
   );
 });

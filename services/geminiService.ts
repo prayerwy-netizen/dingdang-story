@@ -469,16 +469,32 @@ export const playMiniMaxAudio = (audioData: ArrayBuffer, onEnd?: () => void): HT
   const audio = new Audio(url);
 
   audio.onended = () => {
+    console.log('Audio playback ended');
     URL.revokeObjectURL(url);
     onEnd?.();
   };
 
-  audio.onerror = () => {
+  audio.onerror = (e) => {
+    console.error('Audio playback error:', e);
     URL.revokeObjectURL(url);
     onEnd?.();
   };
 
-  audio.play();
+  // 移动端需要处理 play() 返回的 Promise
+  const playPromise = audio.play();
+  if (playPromise !== undefined) {
+    playPromise
+      .then(() => {
+        console.log('Audio playback started successfully');
+      })
+      .catch((error) => {
+        console.error('Audio play failed:', error);
+        // 播放失败时也要调用 onEnd
+        URL.revokeObjectURL(url);
+        onEnd?.();
+      });
+  }
+
   return audio;
 };
 
