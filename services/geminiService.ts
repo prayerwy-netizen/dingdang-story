@@ -1,12 +1,11 @@
-import { GoogleGenAI, Modality, Type } from "@google/genai";
 import { ClassicContent, DiaryEntry } from "../types";
 import { uploadCourseImage, getCourseImageUrl, checkCourseImageExists } from "./storageService";
 
-const API_KEY = import.meta.env.VITE_GEMINI_API_KEY || process.env.API_KEY || '';
-const ai = new GoogleGenAI({ apiKey: API_KEY });
-
-// 第三方中转 API 配置（已禁用，全部使用原生 Gemini）
-const USE_PROXY_API = false;
+// 第三方中转 API 配置（Gemini 原生格式）
+const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY || '';
+const GEMINI_BASE_URL = import.meta.env.VITE_GEMINI_BASE_URL || 'https://generativelanguage.googleapis.com';
+const IMAGE_MODEL = 'gemini-3-pro-image-preview';
+const TEXT_MODEL = 'gemini-3-flash-preview-nothinking';
 
 // MiniMax TTS API 配置
 const MINIMAX_API_KEY = import.meta.env.VITE_MINIMAX_API_KEY || '';
@@ -135,150 +134,45 @@ chūn mián bù jué xiǎo
 画面风格参考：可爱的小朋友形象、圆润的线条、柔和的配色`;
 
   try {
-    // 优先使用中转 API
-    if (USE_PROXY_API) {
-      console.log('Using proxy API for image generation...');
+    const apiUrl = `${GEMINI_BASE_URL}/v1beta/models/${IMAGE_MODEL}:generateContent?key=${GEMINI_API_KEY}`;
+    console.log('[ImageGen] Using Gemini API');
 
-      // 尝试使用 /images/generations 端点（DALL-E 格式）
-      try {
-        const imageResponse = await fetch(`${OPENAI_BASE_URL}/images/generations`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${OPENAI_API_KEY}`
-          },
-          body: JSON.stringify({
-            model: PROXY_IMAGE_MODEL,
-            prompt: prompt,
-            n: 1,
-            size: '1024x1024',
-            response_format: 'b64_json'
-          })
-        });
-
-        if (imageResponse.ok) {
-          const imageData = await imageResponse.json();
-          console.log('Image generation response:', imageData);
-
-          // DALL-E 格式: {data: [{b64_json: '...'}]}
-          if (imageData.data?.[0]?.b64_json) {
-            const base64Image = `data:image/png;base64,${imageData.data[0].b64_json}`;
-            saveImageToCache(content.id, base64Image);
-            return base64Image;
-          }
-          // URL 格式: {data: [{url: '...'}]}
-          if (imageData.data?.[0]?.url) {
-            saveImageToCache(content.id, imageData.data[0].url);
-            return imageData.data[0].url;
-          }
-        } else {
-          console.log('Images endpoint failed, trying chat completions...');
-        }
-      } catch (e) {
-        console.log('Images endpoint error:', e);
-      }
-
-      // 降级尝试 /chat/completions 端点
-      const response = await fetch(`${OPENAI_BASE_URL}/chat/completions`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${OPENAI_API_KEY}`
-        },
-        body: JSON.stringify({
-          model: PROXY_IMAGE_MODEL,
-          messages: [
-            { role: 'user', content: prompt }
-          ]
-        })
-      });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error('Proxy image API error:', errorText);
-        throw new Error('Proxy image API failed');
-      }
-
-      const data = await response.json();
-      console.log('Proxy chat image response:', JSON.stringify(data, null, 2));
-
-      // 尝试从响应中提取图片
-      const message = data.choices?.[0]?.message;
-      const content_parts = message?.content;
-
-      // 格式1: content 是数组（多模态响应）
-      if (Array.isArray(content_parts)) {
-        for (const part of content_parts) {
-          // OpenAI 格式: {type: 'image_url', image_url: {url: 'data:...'}}
-          if (part.type === 'image_url' && part.image_url?.url) {
-            saveImageToCache(content.id, part.image_url.url);
-            return part.image_url.url;
-          }
-          // Gemini 格式: {inline_data: {data: '...', mime_type: '...'}}
-          if (part.inline_data?.data) {
-            const mimeType = part.inline_data.mime_type || 'image/png';
-            const imageData = `data:${mimeType};base64,${part.inline_data.data}`;
-            saveImageToCache(content.id, imageData);
-            return imageData;
-          }
-          // 其他格式: {type: 'image', data: '...'}
-          if (part.type === 'image' && part.data) {
-            const imageData = part.data.startsWith('data:') ? part.data : `data:image/png;base64,${part.data}`;
-            saveImageToCache(content.id, imageData);
-            return imageData;
-          }
-        }
-      }
-
-      // 格式2: content 是字符串
-      if (typeof content_parts === 'string') {
-        // 直接是 data URL
-        if (content_parts.startsWith('data:image')) {
-          saveImageToCache(content.id, content_parts);
-          return content_parts;
-        }
-        // 纯 base64 字符串（长度大于1000且不含空格）
-        if (content_parts.length > 1000 && !content_parts.includes(' ')) {
-          const imageData = `data:image/png;base64,${content_parts}`;
-          saveImageToCache(content.id, imageData);
-          return imageData;
-        }
-        // 即梦图片格式: ![image_0](https://...)
-        const markdownImageMatch = content_parts.match(/!\[.*?\]\((https?:\/\/[^)]+)\)/);
-        if (markdownImageMatch) {
-          const imageUrl = markdownImageMatch[1];
-          console.log('Found image URL from jimeng:', imageUrl);
-          saveImageToCache(content.id, imageUrl);
-          return imageUrl;
-        }
-        // 直接是 URL
-        if (content_parts.startsWith('http')) {
-          saveImageToCache(content.id, content_parts);
-          return content_parts;
-        }
-      }
-
-      console.log('Proxy image generation failed, falling back to native Gemini API...');
-    }
-
-    // 降级使用原生 Gemini API
-    const response = await ai.models.generateContent({
-      model: 'gemini-3-pro-image-preview',
-      contents: {
-        parts: [{ text: prompt }],
+    const response = await fetch(apiUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
       },
-      config: {
-        responseModalities: [Modality.IMAGE, Modality.TEXT],
-      },
+      body: JSON.stringify({
+        contents: [{
+          parts: [{ text: prompt }]
+        }],
+        generationConfig: {
+          responseModalities: ['IMAGE', 'TEXT']
+        }
+      })
     });
 
-    for (const part of response.candidates?.[0]?.content?.parts || []) {
-      if (part.inlineData) {
-        const imageData = `data:image/png;base64,${part.inlineData.data}`;
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('[ImageGen] API error:', errorText);
+      return null;
+    }
+
+    const data = await response.json();
+    console.log('[ImageGen] Response received');
+
+    // 从 Gemini 响应中提取图片
+    const parts = data.candidates?.[0]?.content?.parts || [];
+    for (const part of parts) {
+      if (part.inlineData?.data) {
+        const mimeType = part.inlineData.mimeType || 'image/png';
+        const imageData = `data:${mimeType};base64,${part.inlineData.data}`;
         saveImageToCache(content.id, imageData);
         return imageData;
       }
     }
+
+    console.log('[ImageGen] No image found in response');
     return null;
   } catch (error) {
     console.error("Error generating illustration:", error);
@@ -323,70 +217,58 @@ ${diaryContext || '暂无记录'}
 
 注意：始终用"${profileName}"称呼孩子，用"姐姐"自称，不要说"宝贝"或"叮当姐姐"。
 
-请输出一个JSON对象，包含以下字段：
-- explanation: 完整的讲解文本（包含开场+逐句讲解+总结+联系生活）
-- question: 互动问题。引导孩子思考的开放式问题。
+你必须严格按照以下JSON格式输出，不要输出任何其他内容：
+{"explanation": "完整的讲解文本（包含开场+逐句讲解+总结+联系生活）", "question": "互动问题"}
 
-返回格式必须是纯JSON。`;
+示例输出：
+{"explanation": "叮当，姐姐给你讲故事啦！...", "question": "如果是你，你会怎么做呢？"}
+
+现在请输出JSON：`;
 
   try {
-    // 优先使用中转 API
-    if (USE_PROXY_API) {
-      console.log('Using proxy API for lesson script...');
-      const response = await fetch(`${OPENAI_BASE_URL}/chat/completions`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${OPENAI_API_KEY}`
-        },
-        body: JSON.stringify({
-          model: PROXY_TEXT_MODEL,
-          messages: [
-            { role: 'system', content: '你是一个儿童国学启蒙助手，输出格式必须是纯JSON。' },
-            { role: 'user', content: prompt }
-          ],
+    const apiUrl = `${GEMINI_BASE_URL}/v1beta/models/${TEXT_MODEL}:generateContent?key=${GEMINI_API_KEY}`;
+    console.log('[LessonScript] Using Gemini API for:', profileName);
+
+    const response = await fetch(apiUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        contents: [{
+          parts: [{ text: prompt }]
+        }],
+        generationConfig: {
           temperature: 0.7,
-          max_tokens: 500
-        })
-      });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error('Proxy API error:', errorText);
-        throw new Error('Proxy API request failed');
-      }
-
-      const data = await response.json();
-      const text = data.choices?.[0]?.message?.content || '{}';
-      const jsonMatch = text.match(/\{[\s\S]*\}/);
-      if (jsonMatch) {
-        return JSON.parse(jsonMatch[0]) as LessonScript;
-      }
-      throw new Error('Invalid JSON response');
-    }
-
-    // 使用原生 Gemini API
-    const response = await ai.models.generateContent({
-      model: 'gemini-3-flash-preview',
-      contents: prompt,
-      config: {
-        responseMimeType: "application/json",
-        responseSchema: {
-          type: Type.OBJECT,
-          properties: {
-            explanation: { type: Type.STRING },
-            question: { type: Type.STRING }
-          }
+          maxOutputTokens: 1000
         }
-      }
+      })
     });
 
-    const jsonText = response.text || "{}";
-    return JSON.parse(jsonText) as LessonScript;
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('[LessonScript] API error:', errorText);
+      throw new Error('API request failed');
+    }
+
+    const data = await response.json();
+    const text = data.candidates?.[0]?.content?.parts?.[0]?.text || '{}';
+    console.log('[LessonScript] Raw response:', text.substring(0, 200));
+
+    const jsonMatch = text.match(/\{[\s\S]*\}/);
+    if (jsonMatch) {
+      try {
+        return JSON.parse(jsonMatch[0]) as LessonScript;
+      } catch (parseError) {
+        console.error('[LessonScript] JSON parse error:', parseError, 'Content:', jsonMatch[0].substring(0, 200));
+        throw new Error('JSON parse failed');
+      }
+    }
+    throw new Error('No JSON found in response');
   } catch (error) {
     console.error("Error generating script:", error);
     return {
-      explanation: `宝贝${profileName}，这句话的意思是我们要听爸爸妈妈的话。`,
+      explanation: `${profileName}，姐姐给你讲故事啦！这句话教我们要做一个诚实、守信的好孩子。`,
       question: "如果是你，你会怎么做呢？"
     };
   }
@@ -642,70 +524,38 @@ ${profileName}的回答：（请参考音频内容）
 
   try {
     const base64Audio = await blobToBase64(audioBlob);
+    const apiUrl = `${GEMINI_BASE_URL}/v1beta/models/${TEXT_MODEL}:generateContent?key=${GEMINI_API_KEY}`;
+    console.log('[AudioAnalysis] Using Gemini API');
 
-    // 优先使用中转 API
-    if (USE_PROXY_API) {
-      console.log('Using proxy API for audio analysis...');
-      const response = await fetch(`${OPENAI_BASE_URL}/chat/completions`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${OPENAI_API_KEY}`
-        },
-        body: JSON.stringify({
-          model: PROXY_TEXT_MODEL,
-          messages: [
+    const response = await fetch(apiUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        contents: [{
+          parts: [
             {
-              role: 'user',
-              content: [
-                {
-                  type: 'input_audio',
-                  input_audio: {
-                    data: base64Audio,
-                    format: audioBlob.type.includes('webm') ? 'webm' : 'wav'
-                  }
-                },
-                {
-                  type: 'text',
-                  text: prompt
-                }
-              ]
-            }
+              inlineData: {
+                mimeType: audioBlob.type,
+                data: base64Audio
+              }
+            },
+            { text: prompt }
           ]
-        })
-      });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error('Proxy audio API error:', errorText);
-        throw new Error('Proxy audio API failed');
-      }
-
-      const data = await response.json();
-      const text = data.choices?.[0]?.message?.content;
-      if (text) {
-        return text;
-      }
-      throw new Error('No text in proxy response');
-    }
-
-    // 使用原生 Gemini API
-    const response = await ai.models.generateContent({
-        model: 'gemini-3-flash-preview',
-        contents: {
-            parts: [
-                {
-                    inlineData: {
-                        mimeType: audioBlob.type,
-                        data: base64Audio
-                    }
-                },
-                { text: prompt }
-            ]
-        }
+        }]
+      })
     });
 
-    return response.text || `说得真棒，${profileName}！送你一朵小红花！`;
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('[AudioAnalysis] API error:', errorText);
+      throw new Error('API request failed');
+    }
+
+    const data = await response.json();
+    const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+    return text || `说得真棒，${profileName}！送你一朵小红花！`;
 
   } catch (error) {
     console.error("Error analyzing answer:", error);

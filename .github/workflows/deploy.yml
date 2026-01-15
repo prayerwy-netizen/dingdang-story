@@ -34,11 +34,9 @@ jobs:
         run: npm run build
         env:
           VITE_GEMINI_API_KEY: ${{ secrets.VITE_GEMINI_API_KEY }}
+          VITE_GEMINI_BASE_URL: ${{ secrets.VITE_GEMINI_BASE_URL }}
           VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
           VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
-          VITE_VOLC_API_KEY: ${{ secrets.VITE_VOLC_API_KEY }}
-          VITE_DOUBAO_MODEL_ID: ${{ secrets.VITE_DOUBAO_MODEL_ID }}
-          VITE_DOUBAO_IMAGE_MODEL_ID: ${{ secrets.VITE_DOUBAO_IMAGE_MODEL_ID }}
           VITE_MINIMAX_API_KEY: ${{ secrets.VITE_MINIMAX_API_KEY }}
           VITE_MINIMAX_GROUP_ID: ${{ secrets.VITE_MINIMAX_GROUP_ID }}
 
