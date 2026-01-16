@@ -4,6 +4,7 @@ import { speakWithMiniMax, stopSpeaking } from '../services/geminiService';
 interface AudioPlayerProps {
   audioBuffer: AudioBuffer | null;
   text?: string; // 文本，用于 MiniMax 语音合成
+  preloadedAudio?: ArrayBuffer | null; // 预加载的音频数据
   autoPlay?: boolean;
   onEnded?: () => void;
 }
@@ -43,13 +44,19 @@ const unlockAudio = () => {
   }
 };
 
-const AudioPlayer = forwardRef<AudioPlayerHandle, AudioPlayerProps>(({ audioBuffer, text, autoPlay, onEnded }, ref) => {
+const AudioPlayer = forwardRef<AudioPlayerHandle, AudioPlayerProps>(({ audioBuffer, text, preloadedAudio, autoPlay, onEnded }, ref) => {
   const [isPlaying, setIsPlaying] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [needUserInteraction, setNeedUserInteraction] = useState(false);
-  const [debugInfo, setDebugInfo] = useState<string>(''); // 调试信息
   const cachedAudioRef = useRef<ArrayBuffer | null>(null);
   const audioElementRef = useRef<HTMLAudioElement | null>(null);
+
+  // 如果有预加载的音频，直接使用
+  useEffect(() => {
+    if (preloadedAudio) {
+      cachedAudioRef.current = preloadedAudio;
+    }
+  }, [preloadedAudio]);
 
   useEffect(() => {
     return () => {
@@ -88,14 +95,12 @@ const AudioPlayer = forwardRef<AudioPlayerHandle, AudioPlayerProps>(({ audioBuff
     audioElementRef.current = audio;
 
     audio.onended = () => {
-      setDebugInfo('缓存音频播放完成');
       URL.revokeObjectURL(url);
       setIsPlaying(false);
       onEnded?.();
     };
 
-    audio.onerror = (e) => {
-      setDebugInfo(`缓存音频错误: ${e}`);
+    audio.onerror = () => {
       URL.revokeObjectURL(url);
       setIsPlaying(false);
       onEnded?.();
@@ -106,10 +111,9 @@ const AudioPlayer = forwardRef<AudioPlayerHandle, AudioPlayerProps>(({ audioBuff
     if (playPromise !== undefined) {
       playPromise
         .then(() => {
-          setDebugInfo('缓存音频开始播放');
+          // 播放成功
         })
-        .catch((error) => {
-          setDebugInfo(`缓存播放失败: ${error.message}`);
+        .catch(() => {
           URL.revokeObjectURL(url);
           setIsPlaying(false);
           onEnded?.();
@@ -119,8 +123,6 @@ const AudioPlayer = forwardRef<AudioPlayerHandle, AudioPlayerProps>(({ audioBuff
 
   const playAudio = async () => {
     if (!text) return;
-
-    setDebugInfo('开始播放...');
 
     // 标记用户已经交互过，解锁音频播放
     unlockAudio();
@@ -133,7 +135,6 @@ const AudioPlayer = forwardRef<AudioPlayerHandle, AudioPlayerProps>(({ audioBuff
 
     // 如果有缓存，直接播放
     if (cachedAudioRef.current) {
-      setDebugInfo('使用缓存播放');
       setIsPlaying(true);
       playCachedAudio(cachedAudioRef.current);
       return;
@@ -141,21 +142,18 @@ const AudioPlayer = forwardRef<AudioPlayerHandle, AudioPlayerProps>(({ audioBuff
 
     setIsLoading(true);
     setIsPlaying(true);
-    setDebugInfo('调用 MiniMax API...');
 
     try {
       await speakWithMiniMax(text, () => {
-        setDebugInfo('播放完成');
         setIsPlaying(false);
         setIsLoading(false);
         onEnded?.();
       }, (audioData) => {
         // 缓存音频数据
-        setDebugInfo(`音频数据: ${audioData.byteLength} bytes`);
         cachedAudioRef.current = audioData;
       });
     } catch (e) {
-      setDebugInfo(`错误: ${e}`);
+      console.error('Audio playback error:', e);
     }
 
     setIsLoading(false);
@@ -215,12 +213,6 @@ const AudioPlayer = forwardRef<AudioPlayerHandle, AudioPlayerProps>(({ audioBuff
           </>
         )}
       </button>
-      {/* 调试信息 - 手机端可见 */}
-      {debugInfo && (
-        <div className="mt-2 text-xs text-gray-500 bg-gray-100 px-3 py-1 rounded">
-          {debugInfo}
-        </div>
-      )}
     </div>
   );
 });

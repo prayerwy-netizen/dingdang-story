@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, TouchEvent } from 'react';
 import { ChildProfile, ClassicContent, DiaryEntry, ChildView } from '../types';
 import { CATEGORY_INFO } from '../constants';
 import { generateIllustration, generateLessonScript, analyzeAnswerAndEncourage } from '../services/aiService';
-import { generateSpeech } from '../services/geminiService';
+import { generateSpeech, generateSpeechMiniMax } from '../services/geminiService';
 import { getTotalScore } from '../services/recordService';
 import AudioPlayer, { AudioPlayerHandle } from './AudioPlayer';
 import Recorder from './Recorder';
@@ -171,6 +171,7 @@ const ChildMode: React.FC<ChildModeProps> = ({
   const [currentScript, setCurrentScript] = useState<{explanation: string, question: string} | null>(null);
   const [feedbackText, setFeedbackText] = useState<string>('');
   const [showFlowerAnimation, setShowFlowerAnimation] = useState(false);
+  const [preloadedReadingAudio, setPreloadedReadingAudio] = useState<ArrayBuffer | null>(null);
 
   // Refs
   const explanationPlayerRef = useRef<AudioPlayerHandle>(null);
@@ -209,20 +210,27 @@ const ChildMode: React.FC<ChildModeProps> = ({
     setSelectedContent(content);
     setView(ChildView.LEARNING);
     setLearningState(LearningState.LOADING_ASSETS);
+    setPreloadedReadingAudio(null); // 重置预加载音频
+
+    // 构建第一段朗读文本
+    const readingText = `${profile.name}，我们今天学的是，${content.title}。跟我一起读。${content.text}`;
 
     try {
-      // 并行启动所有任务：图片、脚本生成
+      // 并行启动所有任务：图片、脚本、第一段音频
       const imagePromise = generateIllustration(content);
       const scriptPromise = generateLessonScript(content, profile.name, profile.age, diaries);
+      const readingAudioPromise = generateSpeechMiniMax(readingText);
 
-      // 等待图片和脚本完成（它们是独立的）
-      const [img, script] = await Promise.all([imagePromise, scriptPromise]);
+      // 等待所有任务完成
+      const [img, script, readingAudio] = await Promise.all([
+        imagePromise,
+        scriptPromise,
+        readingAudioPromise
+      ]);
 
       if (img) setIllustration(img);
       setCurrentScript(script);
-
-      // 脚本完成后，音频会在播放时实时生成（MiniMax TTS）
-      // 不需要预先生成音频缓冲区
+      if (readingAudio) setPreloadedReadingAudio(readingAudio);
 
       // 先朗读古诗内容，再讲解
       setLearningState(LearningState.READING_CONTENT);
@@ -545,7 +553,8 @@ const ChildMode: React.FC<ChildModeProps> = ({
                     </div>
                     <AudioPlayer
                       audioBuffer={null}
-                      text={`${profile.name}，我们今天学的是，${selectedContent.title}。\n\n跟我一起读。\n\n${selectedContent.text}`}
+                      text={`${profile.name}，我们今天学的是，${selectedContent.title}。跟我一起读。${selectedContent.text}`}
+                      preloadedAudio={preloadedReadingAudio}
                       autoPlay={true}
                       onEnded={handleReadingEnded}
                     />
