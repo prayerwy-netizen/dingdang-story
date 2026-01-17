@@ -514,8 +514,8 @@ const ChildMode: React.FC<ChildModeProps> = ({
                   ) : (
                     <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-primary-100 to-candy-lavender p-6">
                       <PinyinText
-                        pinyin={selectedContent.pinyin}
-                        text={selectedContent.text}
+                        pinyin={selectedContent.phrases.map(p => p.pinyin).join(' ')}
+                        text={selectedContent.phrases.map(p => p.text).join('')}
                         size="lg"
                       />
                     </div>
@@ -778,8 +778,8 @@ const ChildMode: React.FC<ChildModeProps> = ({
               <div className="p-6 md:p-8">
                 <div className="bg-gradient-to-br from-primary-50 to-candy-lavender rounded-2xl flex items-center justify-center p-6 md:p-8 mb-6">
                   <PinyinText
-                    pinyin={currentDisplayContent.pinyin}
-                    text={currentDisplayContent.text}
+                    pinyin={currentDisplayContent.phrases.map(p => p.pinyin).join(' ')}
+                    text={currentDisplayContent.phrases.map(p => p.text).join('')}
                     size="md"
                   />
                 </div>
