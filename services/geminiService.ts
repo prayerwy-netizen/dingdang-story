@@ -91,6 +91,97 @@ const saveImageToCache = async (contentId: string, imageData: string): Promise<v
   });
 };
 
+// --- Canvas 文字叠加 ---
+
+// 在背景图片上叠加拼音和汉字
+const overlayTextOnImage = async (
+  backgroundImage: string,
+  text: string,
+  pinyin: string
+): Promise<string> => {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d')!;
+
+      // 设置 canvas 尺寸与图片一致
+      canvas.width = img.width;
+      canvas.height = img.height;
+
+      // 绘制背景图片
+      ctx.drawImage(img, 0, 0);
+
+      // 准备文字区域（上方30%）
+      const textAreaHeight = img.height * 0.3;
+      const centerY = textAreaHeight / 2;
+      const centerX = img.width / 2;
+
+      // 将文本按空格分割（如 "弟子规 圣人训 首孝弟 次谨信"）
+      const textChunks = text.split(/\s+/).filter(t => t.length > 0);
+      const pinyinChunks = pinyin.split(/\s{2,}/).filter(p => p.length > 0); // 拼音用双空格分割
+
+      // 如果拼音分割不对，用单空格再试
+      let pinyinParts = pinyinChunks;
+      if (pinyinParts.length !== textChunks.length) {
+        // 按汉字数量平均分配拼音
+        const allPinyin = pinyin.split(/\s+/).filter(p => p.length > 0);
+        pinyinParts = [];
+        let idx = 0;
+        for (const chunk of textChunks) {
+          const chunkPinyin = allPinyin.slice(idx, idx + chunk.length).join(' ');
+          pinyinParts.push(chunkPinyin);
+          idx += chunk.length;
+        }
+      }
+
+      // 计算字体大小（根据图片宽度和文字数量动态调整）
+      const maxChunkWidth = img.width / (textChunks.length + 0.5);
+      const fontSize = Math.min(maxChunkWidth * 0.6, img.height * 0.08);
+      const pinyinSize = fontSize * 0.45;
+      const spacing = maxChunkWidth;
+
+      // 计算起始 X 位置（居中）
+      const totalWidth = (textChunks.length - 1) * spacing;
+      const startX = centerX - totalWidth / 2;
+
+      // 绘制每组文字
+      textChunks.forEach((chunk, i) => {
+        const x = startX + i * spacing;
+        const pinyinText = pinyinParts[i] || '';
+
+        // 绘制拼音（上方）
+        ctx.font = `${pinyinSize}px "PingFang SC", "Microsoft YaHei", sans-serif`;
+        ctx.fillStyle = '#666666';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'bottom';
+        ctx.fillText(pinyinText, x, centerY - 5);
+
+        // 绘制汉字（下方）- 带描边增强可读性
+        ctx.font = `bold ${fontSize}px "PingFang SC", "Microsoft YaHei", serif`;
+        ctx.textBaseline = 'top';
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineWidth = 4;
+        ctx.strokeText(chunk, x, centerY + 5);
+        ctx.fillStyle = '#8B4513'; // 棕色，与儿童插画风格协调
+        ctx.fillText(chunk, x, centerY + 5);
+      });
+
+      // 转换为 base64
+      resolve(canvas.toDataURL('image/png'));
+    };
+
+    img.onerror = () => {
+      console.error('Failed to load image for text overlay');
+      resolve(backgroundImage); // 失败时返回原图
+    };
+
+    img.src = backgroundImage;
+  });
+};
+
 // --- Image Generation ---
 
 export const generateIllustration = async (content: ClassicContent): Promise<string | null> => {
@@ -112,26 +203,19 @@ export const generateIllustration = async (content: ClassicContent): Promise<str
   // 3. 云端也没有，需要生成新图片
   console.log('No cached image found, generating new image for:', content.id);
 
-  const prompt = `生成一张儿童国学启蒙配图：
+  const prompt = `生成一张儿童国学启蒙插画（纯插画，不要任何文字）：
 
-经典原文：${content.text}
-拼音：${content.pinyin}
-
-画面内容建议：根据原文含义，描绘温馨、可爱、充满童趣的场景。
+经典原文含义：${content.text}
 
 要求：
 1. 风格：可爱卡通，色彩明快，适合3-6岁儿童
-2. 文字排版：拼音在上，汉字在下（每个汉字上方对应其拼音）
-3. 文字位置：放在图片上方区域，清晰可读
-4. 背景是与内容相关的可爱插画，占据图片下方大部分区域
-5. 整体温馨、充满童趣
-6. 图片比例：方形（1:1）
+2. 根据原文含义绘制温馨、童趣的场景插画
+3. 画面上方留出约30%的浅色/纯色区域（用于后期添加文字）
+4. 下方70%是与内容相关的可爱插画
+5. 图片比例：方形（1:1）
+6. 重要：不要在图片中添加任何文字、拼音、汉字！只画插画！
 
-文字排版示例：
-chūn mián bù jué xiǎo
-春   眠   不  觉  晓
-
-画面风格参考：可爱的小朋友形象、圆润的线条、柔和的配色`;
+画面风格：可爱的小朋友形象、圆润的线条、柔和的配色、温馨的场景`;
 
   try {
     const apiUrl = `${GEMINI_BASE_URL}/v1beta/models/${IMAGE_MODEL}:generateContent?key=${GEMINI_API_KEY}`;
@@ -166,9 +250,14 @@ chūn mián bù jué xiǎo
     for (const part of parts) {
       if (part.inlineData?.data) {
         const mimeType = part.inlineData.mimeType || 'image/png';
-        const imageData = `data:${mimeType};base64,${part.inlineData.data}`;
-        saveImageToCache(content.id, imageData);
-        return imageData;
+        const backgroundImage = `data:${mimeType};base64,${part.inlineData.data}`;
+
+        // 使用 Canvas 叠加拼音和汉字
+        console.log('[ImageGen] Overlaying text on image');
+        const finalImage = await overlayTextOnImage(backgroundImage, content.text, content.pinyin);
+
+        saveImageToCache(content.id, finalImage);
+        return finalImage;
       }
     }
 
