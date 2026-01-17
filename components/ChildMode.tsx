@@ -554,7 +554,7 @@ const ChildMode: React.FC<ChildModeProps> = ({
                     </div>
                     <AudioPlayer
                       audioBuffer={null}
-                      text={`${profile.name}，我们今天学的是，${selectedContent.title}。跟我一起读。${selectedContent.text}`}
+                      text={`${profile.name}，我们今天学的是，${selectedContent.title}。跟我一起读。${selectedContent.phrases.map(p => p.text).join(' ')}`}
                       preloadedAudio={preloadedReadingAudio}
                       autoPlay={true}
                       onEnded={handleReadingEnded}
@@ -570,7 +570,7 @@ const ChildMode: React.FC<ChildModeProps> = ({
                       跟着读一遍吧~
                     </p>
                     <p className="text-primary-500 text-sm mb-6">
-                      {selectedContent.text}
+                      {selectedContent.phrases.map(p => p.text).join(' ')}
                     </p>
                     <div className="flex gap-3 justify-center">
                       <button
