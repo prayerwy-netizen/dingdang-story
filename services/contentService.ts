@@ -77,11 +77,23 @@ export async function getCourse(courseId: string): Promise<CourseRecord | null> 
 
 // 转换为前端格式
 export function toFrontendContent(record: CourseRecord, isLearned = false): ClassicContent {
+  // 将数据库的 text + pinyin 转换为 phrases 格式
+  const textParts = record.text.split(/\s+/).filter(t => t.length > 0);
+  const pinyinParts = record.pinyin.split(/\s+/).filter(p => p.length > 0);
+
+  const phrases: { text: string; pinyin: string }[] = [];
+  let pinyinIdx = 0;
+  for (const text of textParts) {
+    const charCount = text.length;
+    const pinyin = pinyinParts.slice(pinyinIdx, pinyinIdx + charCount).join(' ');
+    phrases.push({ text, pinyin });
+    pinyinIdx += charCount;
+  }
+
   return {
     id: record.id,
     title: record.title,
-    text: record.text,
-    pinyin: record.pinyin,
+    phrases,
     category: record.category as 'dizigui' | 'tangshi' | 'custom',
     isLearned,
   };
@@ -204,11 +216,23 @@ export async function deleteCustomContent(contentId: string): Promise<{ success:
 
 // 转换自定义内容为前端格式
 export function customToFrontendContent(record: CustomContentRecord): ClassicContent {
+  // 将数据库的 text + pinyin 转换为 phrases 格式
+  const textParts = record.text.split(/\s+/).filter(t => t.length > 0);
+  const pinyinParts = (record.pinyin || '').split(/\s+/).filter(p => p.length > 0);
+
+  const phrases: { text: string; pinyin: string }[] = [];
+  let pinyinIdx = 0;
+  for (const text of textParts) {
+    const charCount = text.length;
+    const pinyin = pinyinParts.slice(pinyinIdx, pinyinIdx + charCount).join(' ');
+    phrases.push({ text, pinyin });
+    pinyinIdx += charCount;
+  }
+
   return {
     id: record.id,
     title: record.title,
-    text: record.text,
-    pinyin: record.pinyin || '',
+    phrases,
     category: 'custom',
     isLearned: false,
   };

@@ -76,6 +76,9 @@ export const generateLessonScriptVolc = async (
 
   const diaryContext = diaries.slice(0, 5).map(d => `[${d.date}] ${d.content}`).join('\n');
 
+  // 从 phrases 生成完整文本
+  const fullText = content.phrases.map(p => p.text).join(' ');
+
   const prompt = `[角色]
 你是"姐姐"，一位温柔有趣的国学启蒙老师。你专门为3-6岁的小朋友讲解中华经典。
 
@@ -84,7 +87,7 @@ export const generateLessonScriptVolc = async (
 2. 尝试从孩子的成长记录中找到关联经历。
 3. 提出一个互动问题。
 
-经典原文：${content.text}
+经典原文：${fullText}
 孩子姓名：${profileName}
 成长记录：
 ${diaryContext || '暂无记录'}
@@ -158,17 +161,26 @@ export const generateIllustrationVolc = async (content: ClassicContent): Promise
     return cachedImage;
   }
 
+  // 将 phrases 转换为文字排版格式
+  const pinyinLine = content.phrases.map(p => p.pinyin).join('  ');
+  const textLine = content.phrases.map(p => p.text).join(' ');
+
   const prompt = `生成一张儿童国学启蒙学习卡片：
 
-经典原文：${content.text}
-拼音：${content.pinyin}
+经典原文（词组对应）：
+${content.phrases.map(p => `${p.text}(${p.pinyin})`).join(' ')}
 
 要求：
 1. 风格：可爱卡通，色彩明快，适合3-6岁儿童
-2. 文字排版：图片上方区域显示拼音和汉字，拼音在上，汉字在下，每个汉字上方对应其拼音
-3. 背景是与内容相关的可爱插画，占据图片下方大部分区域
-4. 整体温馨、充满童趣，圆润线条
-5. 方形构图`;
+2. 文字排版【重要】：每个词组的拼音在上，汉字在下，严格对齐！
+3. 文字位置：放在图片上方区域，清晰可读，每个词组间有适当间距
+4. 背景是与内容相关的可爱插画，占据图片下方大部分区域
+5. 整体温馨、充满童趣，圆润线条
+6. 方形构图
+
+【严格按照以下格式排版文字】：
+${pinyinLine}
+${textLine}`;
 
   try {
     const response = await fetch(VOLC_IMAGE_ENDPOINT, {

@@ -12,14 +12,19 @@ export interface ChildProfile {
   redFlowers: number;
 }
 
+// 词组结构：文字和拼音强绑定
+export interface Phrase {
+  text: string;   // e.g., "弟子规"
+  pinyin: string; // e.g., "dì zǐ guī"
+}
+
 export interface ClassicContent {
   id: string;
   title: string; // e.g., "弟子规 - 总叙"
-  text: string; // e.g., "弟子规 圣人训 首孝弟 次谨信"
-  pinyin: string; // e.g., "dì zǐ guī  shèng rén xùn  shǒu xiào tì  cì jǐn xìn"
-  category: 'dizigui' | 'tangshi' | 'custom'; // 新增custom类型
-  isLearned?: boolean; // 是否已学习
-  learnedDate?: string; // 学习日期
+  phrases: Phrase[]; // 词组数组，文字和拼音强绑定
+  category: 'dizigui' | 'tangshi' | 'custom';
+  isLearned?: boolean;
+  learnedDate?: string;
 }
 
 export interface DailyLesson {

@@ -213,7 +213,8 @@ const ChildMode: React.FC<ChildModeProps> = ({
     setPreloadedReadingAudio(null); // 重置预加载音频
 
     // 构建第一段朗读文本
-    const readingText = `${profile.name}，我们今天学的是，${content.title}。跟我一起读。${content.text}`;
+    const fullText = content.phrases.map(p => p.text).join(' ');
+    const readingText = `${profile.name}，我们今天学的是，${content.title}。跟我一起读。${fullText}`;
 
     try {
       // 并行启动所有任务：图片、脚本、第一段音频
@@ -454,7 +455,7 @@ const ChildMode: React.FC<ChildModeProps> = ({
                             <h3 className="font-heading text-primary-800 text-base md:text-lg mb-1 truncate">
                               {content.title}
                             </h3>
-                            <p className="text-primary-500 text-sm line-clamp-2">{content.text}</p>
+                            <p className="text-primary-500 text-sm line-clamp-2">{content.phrases.map(p => p.text).join(' ')}</p>
                           </div>
                         </div>
                       </button>

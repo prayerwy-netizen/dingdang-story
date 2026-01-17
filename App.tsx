@@ -147,10 +147,14 @@ const App: React.FC = () => {
   const handleAddCustomContent = async (content: ClassicContent) => {
     if (!familyCode) return;
 
+    // 将 phrases 转换为 text + pinyin 存储
+    const text = content.phrases.map(p => p.text).join(' ');
+    const pinyin = content.phrases.map(p => p.pinyin).join(' ');
+
     const result = await familyService.createCustomContent(familyCode, {
       title: content.title,
-      text: content.text,
-      pinyin: content.pinyin,
+      text,
+      pinyin,
     });
 
     if (result.success && result.data) {

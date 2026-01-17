@@ -514,10 +514,8 @@ const ParentMode: React.FC<ParentModeProps> = ({
                         <div className="flex items-start justify-between">
                           <div className="flex-1 min-w-0">
                             <h4 className="font-heading text-primary-800 mb-1">{content.title}</h4>
-                            <p className="text-primary-500 text-sm">{content.text}</p>
-                            {content.pinyin && (
-                              <p className="text-primary-400 text-xs mt-1">{content.pinyin}</p>
-                            )}
+                            <p className="text-primary-500 text-sm">{content.phrases.map(p => p.text).join(' ')}</p>
+                            <p className="text-primary-400 text-xs mt-1">{content.phrases.map(p => p.pinyin).join(' ')}</p>
                           </div>
                           <button
                             onClick={() => {

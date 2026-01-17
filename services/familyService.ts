@@ -282,11 +282,24 @@ export function toFrontendDiary(record: DiaryRecord) {
 }
 
 export function toFrontendContent(record: CustomContentRecord): ClassicContent {
+  // 将数据库的 text + pinyin 转换为 phrases 格式
+  const textParts = record.text.split(/\s+/).filter(t => t.length > 0);
+  const pinyinParts = (record.pinyin || '').split(/\s+/).filter(p => p.length > 0);
+
+  // 按三字一组分配拼音
+  const phrases: { text: string; pinyin: string }[] = [];
+  let pinyinIdx = 0;
+  for (const text of textParts) {
+    const charCount = text.length;
+    const pinyin = pinyinParts.slice(pinyinIdx, pinyinIdx + charCount).join(' ');
+    phrases.push({ text, pinyin });
+    pinyinIdx += charCount;
+  }
+
   return {
     id: record.id,
     title: record.title,
-    text: record.text,
-    pinyin: record.pinyin || '',
+    phrases,
     category: 'custom',
     isLearned: false,
   };
