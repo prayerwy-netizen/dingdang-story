@@ -1,7 +1,0 @@
-{
-  "name": "DingDang School",
-  "description": "A classic Chinese education app for children aged 3-6, featuring AI-driven stories, voice interaction, and personalized learning experiences.",
-  "requestFramePermissions": [
-    "microphone"
-  ]
-}
