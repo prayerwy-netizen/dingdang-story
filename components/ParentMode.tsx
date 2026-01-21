@@ -6,6 +6,15 @@ import QuickRecord from './QuickRecord';
 import TaskManager from './TaskManager';
 import GiftManager from './GiftManager';
 import ApprovalCenter from './ApprovalCenter';
+import {
+  ChevronLeftIcon,
+  PlusIcon,
+  TrashIcon,
+  CameraIcon,
+  RefreshIcon,
+  SwitchIcon,
+} from './Icons';
+import { useToast } from '../contexts/ToastContext';
 
 interface ParentModeProps {
   profile: ChildProfile;
@@ -24,32 +33,6 @@ interface ParentModeProps {
   onExit: () => void;
 }
 
-// SVG Icons
-const ChevronLeftIcon = () => (
-  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-  </svg>
-);
-
-const PlusIcon = () => (
-  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-  </svg>
-);
-
-const TrashIcon = () => (
-  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-  </svg>
-);
-
-const CameraIcon = () => (
-  <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
-    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
-  </svg>
-);
-
 const ParentMode: React.FC<ParentModeProps> = ({
   profile,
   diaries,
@@ -66,6 +49,7 @@ const ParentMode: React.FC<ParentModeProps> = ({
   onSwitchFamily,
   onExit
 }) => {
+  const toast = useToast();
   const [activeTab, setActiveTab] = useState<ParentTab>(ParentTab.DIARY);
   const [pendingApprovalCount, setPendingApprovalCount] = useState(0);
 
@@ -132,7 +116,7 @@ const ParentMode: React.FC<ParentModeProps> = ({
   // Save diary
   const handleSaveDiary = (isDraft: boolean = false) => {
     if (!diaryText.trim() && !isDraft) {
-      alert('请输入日记内容');
+      toast.warning('请输入日记内容');
       return;
     }
 
@@ -152,10 +136,10 @@ const ParentMode: React.FC<ParentModeProps> = ({
       setDiaryText('');
       setDiaryPhotos([]);
       setDiaryDate(new Date().toISOString().split('T')[0]);
-      alert('日记已保存！');
+      toast.success('日记已保存！');
     } else {
       setDiaryId(entry.id);
-      alert('草稿已保存！');
+      toast.success('草稿已保存！');
     }
   };
 
@@ -170,13 +154,13 @@ const ParentMode: React.FC<ParentModeProps> = ({
   // Save settings
   const handleSaveSettings = () => {
     onUpdateProfile({ name: editName, age: editAge });
-    alert('设置已更新！');
+    toast.success('设置已更新！');
   };
 
   // Add custom content
   const handleAddCustomContent = () => {
     if (!newTitle.trim() || !newText.trim()) {
-      alert('请填写标题和内容');
+      toast.warning('请填写标题和内容');
       return;
     }
 
@@ -193,7 +177,7 @@ const ParentMode: React.FC<ParentModeProps> = ({
     setNewText('');
     setNewPinyin('');
     setShowAddContent(false);
-    alert('内容已添加！');
+    toast.success('内容已添加！');
   };
 
   // Tab button style
@@ -599,21 +583,6 @@ const ParentMode: React.FC<ParentModeProps> = ({
                   </button>
                 </div>
 
-                {/* 统计信息 */}
-                <div className="pt-6 border-t border-primary-100">
-                  <h3 className="font-heading text-primary-700 mb-4">学习统计</h3>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="bg-primary-50 rounded-xl p-4 text-center">
-                      <p className="text-primary-400 text-sm">累计日记</p>
-                      <p className="font-heading text-2xl text-primary-700">{diaries.filter(d => !d.isDraft).length}</p>
-                    </div>
-                    <div className="bg-accent-orange/10 rounded-xl p-4 text-center">
-                      <p className="text-primary-400 text-sm">小红花</p>
-                      <p className="font-heading text-2xl text-accent-orange">{profile.redFlowers}</p>
-                    </div>
-                  </div>
-                </div>
-
                 {/* 课程管理 */}
                 <div className="pt-6 border-t border-primary-100">
                   <h3 className="font-heading text-primary-700 mb-4">课程管理</h3>
@@ -635,14 +604,12 @@ const ParentMode: React.FC<ParentModeProps> = ({
                     onClick={() => {
                       if (confirm('确定要重置课程吗？重置后将从第一课开始学习。')) {
                         onResetCourse();
-                        alert('课程已重置，今天从第一课开始！');
+                        toast.success('课程已重置，今天从第一课开始！');
                       }
                     }}
                     className="w-full py-3 rounded-xl font-heading text-amber-600 bg-amber-50 hover:bg-amber-100 border-2 border-amber-200 cursor-pointer transition-colors flex items-center justify-center gap-2"
                   >
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                    </svg>
+                    <RefreshIcon className="w-5 h-5" />
                     重置课程（从第一课开始）
                   </button>
                 </div>
@@ -709,9 +676,7 @@ const ParentMode: React.FC<ParentModeProps> = ({
                       onClick={onSwitchFamily}
                       className="w-full py-3 rounded-xl font-heading text-gray-600 bg-gray-50 hover:bg-gray-100 border-2 border-gray-200 cursor-pointer transition-colors flex items-center justify-center gap-2"
                     >
-                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
-                      </svg>
+                      <SwitchIcon className="w-5 h-5" />
                       切换家庭码
                     </button>
                   </div>

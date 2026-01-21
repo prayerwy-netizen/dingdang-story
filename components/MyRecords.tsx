@@ -74,13 +74,13 @@ const MyRecords: React.FC<MyRecordsProps> = ({ familyCode }) => {
         <div className="clay-card p-4 mb-4 bg-gradient-to-br from-accent-orange/10 to-candy-peach/30">
           <div className="grid grid-cols-2 gap-4">
             <div className="text-center">
-              <p className="text-accent-green font-heading text-xl">
+              <p className="text-red-500 font-heading text-xl">
                 +{records.filter(r => r.score > 0).reduce((sum, r) => sum + r.score, 0)}
               </p>
               <p className="text-primary-500 text-sm">累计获得</p>
             </div>
             <div className="text-center">
-              <p className="text-red-500 font-heading text-xl">
+              <p className="text-green-500 font-heading text-xl">
                 {records.filter(r => r.score < 0).reduce((sum, r) => sum + r.score, 0)}
               </p>
               <p className="text-primary-500 text-sm">累计消费</p>
@@ -125,7 +125,7 @@ const MyRecords: React.FC<MyRecordsProps> = ({ familyCode }) => {
                 <div key={date}>
                   <div className="flex items-center justify-between mb-2">
                     <h3 className="font-heading text-primary-700">{formatDate(date)}</h3>
-                    <span className={`font-heading ${dayTotal >= 0 ? 'text-accent-green' : 'text-red-500'}`}>
+                    <span className={`font-heading ${dayTotal >= 0 ? 'text-red-500' : 'text-green-500'}`}>
                       {dayTotal >= 0 ? '+' : ''}{dayTotal}
                     </span>
                   </div>
@@ -137,7 +137,7 @@ const MyRecords: React.FC<MyRecordsProps> = ({ familyCode }) => {
                       >
                         <div className="flex items-center gap-3">
                           <div className={`w-10 h-10 rounded-xl flex items-center justify-center text-xl ${
-                            record.score >= 0 ? 'bg-accent-green/10' : 'bg-red-50'
+                            record.score >= 0 ? 'bg-red-50' : 'bg-green-50'
                           }`}>
                             {record.score >= 0 ? '⭐' : '🎁'}
                           </div>
@@ -149,7 +149,7 @@ const MyRecords: React.FC<MyRecordsProps> = ({ familyCode }) => {
                           </div>
                         </div>
                         <span className={`font-heading text-lg ${
-                          record.score >= 0 ? 'text-accent-green' : 'text-red-500'
+                          record.score >= 0 ? 'text-red-500' : 'text-green-500'
                         }`}>
                           {record.score >= 0 ? '+' : ''}{record.score}
                         </span>

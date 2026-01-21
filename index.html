@@ -198,6 +198,21 @@
 
       /* Touch target minimum size */
       .touch-target { min-height: 48px; min-width: 48px; }
+
+      /* Toast slide-in animation */
+      @keyframes toast-slide-in {
+        0% {
+          transform: translateY(-100%);
+          opacity: 0;
+        }
+        100% {
+          transform: translateY(0);
+          opacity: 1;
+        }
+      }
+      .animate-toast-slide-in {
+        animation: toast-slide-in 0.3s ease-out;
+      }
     </style>
 
     <script type="importmap">

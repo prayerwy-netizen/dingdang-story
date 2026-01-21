@@ -5,6 +5,8 @@ import ChildMode from './components/ChildMode';
 import ParentMode from './components/ParentMode';
 import ParentGate from './components/ParentGate';
 import FamilyCodeEntry from './components/FamilyCodeEntry';
+import ToastContainer from './components/ToastContainer';
+import { ToastProvider } from './contexts/ToastContext';
 
 // 服务层导入
 import * as familyService from './services/familyService';
@@ -261,42 +263,45 @@ const App: React.FC = () => {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-primary-50 to-primary-100">
-      <div className="min-h-screen w-full md:max-w-2xl lg:max-w-4xl md:mx-auto md:py-4 lg:py-6">
-        <div className="min-h-screen md:min-h-0 md:h-[calc(100vh-2rem)] lg:h-[calc(100vh-3rem)] bg-white md:rounded-4xl md:shadow-clay overflow-hidden">
-          {mode === AppMode.CHILD ? (
-            <ChildMode
-              profile={childProfile}
-              diaries={diaries}
-              allContents={allContents}
-              todayContent={todayContent}
-              yesterdayContent={yesterdayContent}
-              familyCode={familyCode}
-              onUpdateProfile={handleUpdateProfile}
-              onOpenParentGate={handleOpenParentGate}
-              onMarkCourseAsLearned={handleMarkCourseAsLearned}
-            />
-          ) : (
-            <ParentMode
-              profile={childProfile}
-              diaries={diaries}
-              customContents={customContents}
-              currentLessonIndex={todayIndex}
-              totalLessons={allContents.length}
-              familyCode={familyCode}
-              onAddDiary={handleAddDiary}
-              onDeleteDiary={handleDeleteDiary}
-              onUpdateProfile={handleUpdateProfile}
-              onAddCustomContent={handleAddCustomContent}
-              onDeleteCustomContent={handleDeleteCustomContent}
-              onResetCourse={handleResetCourse}
-              onSwitchFamily={handleSwitchFamily}
-              onExit={() => setMode(AppMode.CHILD)}
-            />
-          )}
+    <ToastProvider>
+      <div className="min-h-screen bg-gradient-to-b from-primary-50 to-primary-100">
+        <div className="min-h-screen w-full md:max-w-2xl lg:max-w-4xl md:mx-auto md:py-4 lg:py-6">
+          <div className="min-h-screen md:min-h-0 md:h-[calc(100vh-2rem)] lg:h-[calc(100vh-3rem)] bg-white md:rounded-4xl md:shadow-clay overflow-hidden">
+            {mode === AppMode.CHILD ? (
+              <ChildMode
+                profile={childProfile}
+                diaries={diaries}
+                allContents={allContents}
+                todayContent={todayContent}
+                yesterdayContent={yesterdayContent}
+                familyCode={familyCode}
+                onUpdateProfile={handleUpdateProfile}
+                onOpenParentGate={handleOpenParentGate}
+                onMarkCourseAsLearned={handleMarkCourseAsLearned}
+              />
+            ) : (
+              <ParentMode
+                profile={childProfile}
+                diaries={diaries}
+                customContents={customContents}
+                currentLessonIndex={todayIndex}
+                totalLessons={allContents.length}
+                familyCode={familyCode}
+                onAddDiary={handleAddDiary}
+                onDeleteDiary={handleDeleteDiary}
+                onUpdateProfile={handleUpdateProfile}
+                onAddCustomContent={handleAddCustomContent}
+                onDeleteCustomContent={handleDeleteCustomContent}
+                onResetCourse={handleResetCourse}
+                onSwitchFamily={handleSwitchFamily}
+                onExit={() => setMode(AppMode.CHILD)}
+              />
+            )}
+          </div>
         </div>
       </div>
-    </div>
+      <ToastContainer />
+    </ToastProvider>
   );
 };
 

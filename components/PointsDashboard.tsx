@@ -1,28 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { PointRecord } from '../types';
 import { getRecordsByMonth, getDailyScores, getTotalScore } from '../services/recordService';
+import { ChevronLeftIcon, ChevronRightIcon } from './Icons';
 
 interface PointsDashboardProps {
   familyCode: string;
   onClose: () => void;
 }
-
-const ChevronLeftIcon = () => (
-  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-  </svg>
-);
-
-const ChevronIcon = ({ direction }: { direction: 'left' | 'right' }) => (
-  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-    <path
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      strokeWidth={2}
-      d={direction === 'left' ? 'M15 19l-7-7 7-7' : 'M9 5l7 7-7 7'}
-    />
-  </svg>
-);
 
 const PointsDashboard: React.FC<PointsDashboardProps> = ({ familyCode, onClose }) => {
   const [currentDate, setCurrentDate] = useState(new Date());
@@ -134,7 +118,7 @@ const PointsDashboard: React.FC<PointsDashboardProps> = ({ familyCode, onClose }
             onClick={prevMonth}
             className="touch-target p-2 rounded-xl text-primary-500 hover:bg-primary-50 cursor-pointer"
           >
-            <ChevronIcon direction="left" />
+            <ChevronLeftIcon className="w-5 h-5" />
           </button>
           <h2 className="font-heading text-lg text-primary-800">
             {year}年{month}月
@@ -143,7 +127,7 @@ const PointsDashboard: React.FC<PointsDashboardProps> = ({ familyCode, onClose }
             onClick={nextMonth}
             className="touch-target p-2 rounded-xl text-primary-500 hover:bg-primary-50 cursor-pointer"
           >
-            <ChevronIcon direction="right" />
+            <ChevronRightIcon className="w-5 h-5" />
           </button>
         </div>
 

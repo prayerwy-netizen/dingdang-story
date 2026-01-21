@@ -2,12 +2,15 @@ import React, { useState, useEffect } from 'react';
 import { Task, PointRecord } from '../types';
 import { getEnabledTasks } from '../services/taskService';
 import { addRecord, getRecordsByDate, getTotalScore, deleteRecord } from '../services/recordService';
+import { CloseIcon } from './Icons';
+import { useToast } from '../contexts/ToastContext';
 
 interface QuickRecordProps {
   familyCode: string;
 }
 
 const QuickRecord: React.FC<QuickRecordProps> = ({ familyCode }) => {
+  const toast = useToast();
   const [tasks, setTasks] = useState<Task[]>([]);
   const [todayRecords, setTodayRecords] = useState<PointRecord[]>([]);
   const [totalScore, setTotalScore] = useState(0);
@@ -65,7 +68,7 @@ const QuickRecord: React.FC<QuickRecordProps> = ({ familyCode }) => {
     });
 
     if (tasksToSubmit.length === 0) {
-      alert('请先输入要记录的分数');
+      toast.warning('请先输入要记录的分数');
       return;
     }
 
@@ -94,7 +97,7 @@ const QuickRecord: React.FC<QuickRecordProps> = ({ familyCode }) => {
     setSubmitting(false);
 
     if (failCount > 0) {
-      alert(`提交完成：${successCount} 条成功，${failCount} 条失败`);
+      toast.warning(`提交完成：${successCount} 条成功，${failCount} 条失败`);
     }
 
     // 重新加载数据（会重置所有输入）
@@ -109,7 +112,7 @@ const QuickRecord: React.FC<QuickRecordProps> = ({ familyCode }) => {
     if (result.success) {
       loadData();
     } else {
-      alert(result.error || '删除失败');
+      toast.error(result.error || '删除失败');
     }
   };
 
@@ -261,9 +264,7 @@ const QuickRecord: React.FC<QuickRecordProps> = ({ familyCode }) => {
                         onClick={() => handleDeleteRecord(record.id)}
                         className="text-primary-400 hover:text-red-500 cursor-pointer"
                       >
-                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                        </svg>
+                        <CloseIcon className="w-5 h-5" />
                       </button>
                     </div>
                   </div>

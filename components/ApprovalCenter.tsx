@@ -2,12 +2,14 @@ import React, { useState, useEffect } from 'react';
 import { GiftRequest } from '../types';
 import { getRequests, approveRequest, rejectRequest } from '../services/requestService';
 import { getTotalScore } from '../services/recordService';
+import { useToast } from '../contexts/ToastContext';
 
 interface ApprovalCenterProps {
   familyCode: string;
 }
 
 const ApprovalCenter: React.FC<ApprovalCenterProps> = ({ familyCode }) => {
+  const toast = useToast();
   const [requests, setRequests] = useState<GiftRequest[]>([]);
   const [totalScore, setTotalScore] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -33,7 +35,7 @@ const ApprovalCenter: React.FC<ApprovalCenterProps> = ({ familyCode }) => {
     if (result.success) {
       loadData();
     } else {
-      alert(result.error || '批准失败');
+      toast.error(result.error || '批准失败');
     }
   };
 
@@ -45,7 +47,7 @@ const ApprovalCenter: React.FC<ApprovalCenterProps> = ({ familyCode }) => {
     if (result.success) {
       loadData();
     } else {
-      alert(result.error || '拒绝失败');
+      toast.error(result.error || '拒绝失败');
     }
   };
 

@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Gift, GiftRequest } from '../types';
 import { getEnabledGifts } from '../services/giftService';
 import { createRequest, getRequests } from '../services/requestService';
+import { useToast } from '../contexts/ToastContext';
 
 interface GiftShopProps {
   familyCode: string;
@@ -9,6 +10,7 @@ interface GiftShopProps {
 }
 
 const GiftShop: React.FC<GiftShopProps> = ({ familyCode, totalPoints }) => {
+  const toast = useToast();
   const [gifts, setGifts] = useState<Gift[]>([]);
   const [myRequests, setMyRequests] = useState<GiftRequest[]>([]);
   const [loading, setLoading] = useState(true);
@@ -31,7 +33,7 @@ const GiftShop: React.FC<GiftShopProps> = ({ familyCode, totalPoints }) => {
 
   const handleExchange = async (gift: Gift) => {
     if (totalPoints < gift.score) {
-      alert('积分不足哦~');
+      toast.warning('积分不足哦~');
       return;
     }
 
@@ -45,10 +47,10 @@ const GiftShop: React.FC<GiftShopProps> = ({ familyCode, totalPoints }) => {
     });
 
     if (result.success) {
-      alert('申请已提交，等待家长审批~');
+      toast.success('申请已提交，等待家长审批~');
       loadData();
     } else {
-      alert(result.error || '申请失败');
+      toast.error(result.error || '申请失败');
     }
   };
 

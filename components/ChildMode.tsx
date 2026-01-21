@@ -9,6 +9,19 @@ import Recorder from './Recorder';
 import PointsDashboard from './PointsDashboard';
 import GiftShop from './GiftShop';
 import MyRecords from './MyRecords';
+import PinyinText from './PinyinText';
+import {
+  HomeIcon,
+  BookIcon,
+  LockIcon,
+  GiftIcon,
+  ListIcon,
+  ChevronLeftIcon,
+  DownloadIcon,
+  RefreshIcon,
+  ChevronRightIcon,
+} from './Icons';
+import { useToast } from '../contexts/ToastContext';
 
 interface ChildModeProps {
   profile: ChildProfile;
@@ -36,105 +49,6 @@ enum LearningState {
   COMPLETED = 'COMPLETED'
 }
 
-// SVG Icons
-const HomeIcon = () => (
-  <svg className="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
-  </svg>
-);
-
-const BookIcon = () => (
-  <svg className="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
-  </svg>
-);
-
-const LockIcon = () => (
-  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
-  </svg>
-);
-
-const GiftIcon = () => (
-  <svg className="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v13m0-13V6a2 2 0 112 2h-2zm0 0V5.5A2.5 2.5 0 109.5 8H12zm-7 4h14M5 12a2 2 0 110-4h14a2 2 0 110 4M5 12v7a2 2 0 002 2h10a2 2 0 002-2v-7" />
-  </svg>
-);
-
-const ListIcon = () => (
-  <svg className="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
-  </svg>
-);
-
-const ChevronLeftIcon = () => (
-  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-  </svg>
-);
-
-const FlowerIcon = () => (
-  <svg className="w-8 h-8" viewBox="0 0 24 24" fill="currentColor">
-    <path d="M12 2C13.1 2 14 2.9 14 4C14 4.74 13.6 5.39 13 5.73V7H14C15.1 7 16 7.9 16 9V10H17C18.1 10 19 10.9 19 12C19 13.1 18.1 14 17 14H16V15C16 16.1 15.1 17 14 17H13V18.27C13.6 18.61 14 19.26 14 20C14 21.1 13.1 22 12 22C10.9 22 10 21.1 10 20C10 19.26 10.4 18.61 11 18.27V17H10C8.9 17 8 16.1 8 15V14H7C5.9 14 5 13.1 5 12C5 10.9 5.9 10 7 10H8V9C8 7.9 8.9 7 10 7H11V5.73C10.4 5.39 10 4.74 10 4C10 2.9 10.9 2 12 2Z" />
-  </svg>
-);
-
-// 拼音-汉字对应组件
-const PinyinText: React.FC<{ pinyin: string; text: string; size?: 'sm' | 'md' | 'lg' }> = ({
-  pinyin,
-  text,
-  size = 'md'
-}) => {
-  // 清理拼音：按空格分割，移除西文标点
-  const pinyinSyllables = pinyin
-    .replace(/[,.\!\?]/g, '')
-    .split(/\s+/)
-    .filter(p => p.trim());
-
-  // 中文标点
-  const chinesePunctuation = /[，。！？、；：""''（）《》【】\s]/;
-
-  // 分割文本为字符
-  const chars = text.split('');
-
-  let syllableIndex = 0;
-
-  // 根据 size 设置样式
-  const sizeStyles = {
-    sm: { pinyin: 'text-xs', char: 'text-base md:text-lg' },
-    md: { pinyin: 'text-xs md:text-sm', char: 'text-xl md:text-2xl' },
-    lg: { pinyin: 'text-sm md:text-base', char: 'text-2xl md:text-3xl' }
-  };
-
-  const styles = sizeStyles[size];
-
-  return (
-    <div className="flex flex-wrap justify-center items-end gap-x-1 gap-y-3">
-      {chars.map((char, i) => {
-        if (chinesePunctuation.test(char)) {
-          // 标点符号，不显示拼音
-          return (
-            <span key={i} className={`font-heading ${styles.char} text-primary-800`}>
-              {char}
-            </span>
-          );
-        }
-
-        // 汉字，配对拼音
-        const py = pinyinSyllables[syllableIndex] || '';
-        syllableIndex++;
-
-        return (
-          <div key={i} className="inline-flex flex-col items-center">
-            <span className={`text-primary-400 ${styles.pinyin} leading-tight`}>{py}</span>
-            <span className={`font-heading ${styles.char} text-primary-800 leading-tight`}>{char}</span>
-          </div>
-        );
-      })}
-    </div>
-  );
-};
-
 const ChildMode: React.FC<ChildModeProps> = ({
   profile,
   diaries,
@@ -146,6 +60,7 @@ const ChildMode: React.FC<ChildModeProps> = ({
   onOpenParentGate,
   onMarkCourseAsLearned
 }) => {
+  const toast = useToast();
   const [view, setView] = useState<ChildView>(ChildView.HOME);
   const [selectedContent, setSelectedContent] = useState<ClassicContent | null>(null);
   const [showYesterday, setShowYesterday] = useState(false);
@@ -237,7 +152,7 @@ const ChildMode: React.FC<ChildModeProps> = ({
       setLearningState(LearningState.READING_CONTENT);
     } catch (e) {
       console.error("Failed to load lesson assets", e);
-      alert("加载失败，请重试");
+      toast.error('加载失败，请重试');
       setLearningState(LearningState.IDLE);
       setView(ChildView.HOME);
     }
@@ -289,7 +204,6 @@ const ChildMode: React.FC<ChildModeProps> = ({
 
       setLearningState(LearningState.FEEDBACK);
       setShowFlowerAnimation(true);
-      onUpdateProfile({ redFlowers: profile.redFlowers + 1 });
 
       setTimeout(() => setShowFlowerAnimation(false), 1500);
     } catch (e) {
@@ -300,9 +214,11 @@ const ChildMode: React.FC<ChildModeProps> = ({
 
   const handleFeedbackEnded = () => {
     setLearningState(LearningState.COMPLETED);
-    // 标记课程为已学习
+    // 标记课程为已学习，会自动增加5个小元宝
     if (selectedContent && onMarkCourseAsLearned) {
       onMarkCourseAsLearned(selectedContent.id);
+      // 本地更新积分显示（+5小元宝）
+      setTotalPoints(prev => prev + 5);
     }
   };
 
@@ -447,9 +363,7 @@ const ChildMode: React.FC<ChildModeProps> = ({
                                 {idx + 1}
                               </span>
                               {content.isLearned && (
-                                <span className="text-accent-green">
-                                  <FlowerIcon />
-                                </span>
+                                <span className="text-accent-green text-sm font-bold">✓</span>
                               )}
                             </div>
                             <h3 className="font-heading text-primary-800 text-base md:text-lg mb-1 truncate">
@@ -482,12 +396,10 @@ const ChildMode: React.FC<ChildModeProps> = ({
               >
                 <ChevronLeftIcon />
               </button>
-              <div className="flex items-center gap-2">
-                <span className="text-accent-orange">
-                  <FlowerIcon />
-                </span>
-                <span className={`font-heading text-xl text-accent-orange ${showFlowerAnimation ? 'bounce-reward' : ''}`}>
-                  {profile.redFlowers}
+              <div className="flex items-center gap-2 clay-card px-3 py-1.5">
+                <span className="text-lg">💰</span>
+                <span className={`font-heading text-lg text-accent-orange ${showFlowerAnimation ? 'bounce-reward' : ''}`}>
+                  {totalPoints}
                 </span>
               </div>
             </div>
@@ -534,9 +446,7 @@ const ChildMode: React.FC<ChildModeProps> = ({
                       className="flex items-center gap-1.5 text-primary-500 hover:text-primary-600 text-sm cursor-pointer transition-colors"
                       title="保存图片"
                     >
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-                      </svg>
+                      <DownloadIcon className="w-4 h-4" />
                       保存图片
                     </button>
                   </div>
@@ -577,9 +487,7 @@ const ChildMode: React.FC<ChildModeProps> = ({
                         onClick={handleReplayReading}
                         className="clay-btn-secondary px-5 py-3 rounded-2xl font-heading text-primary-600 cursor-pointer flex items-center gap-2"
                       >
-                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                        </svg>
+                        <RefreshIcon className="w-5 h-5" />
                         再读一遍
                       </button>
                       <button
@@ -587,9 +495,7 @@ const ChildMode: React.FC<ChildModeProps> = ({
                         className="clay-btn px-5 py-3 rounded-2xl font-heading text-white cursor-pointer flex items-center gap-2"
                       >
                         听懂了
-                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                        </svg>
+                        <ChevronRightIcon className="w-5 h-5" />
                       </button>
                     </div>
                   </div>
@@ -617,9 +523,7 @@ const ChildMode: React.FC<ChildModeProps> = ({
                         onClick={handleReplayExplanation}
                         className="clay-btn-secondary px-5 py-3 rounded-2xl font-heading text-primary-600 cursor-pointer flex items-center gap-2"
                       >
-                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                        </svg>
+                        <RefreshIcon className="w-5 h-5" />
                         再听一遍
                       </button>
                       <button
@@ -627,9 +531,7 @@ const ChildMode: React.FC<ChildModeProps> = ({
                         className="clay-btn px-5 py-3 rounded-2xl font-heading text-white cursor-pointer flex items-center gap-2"
                       >
                         听懂了
-                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                        </svg>
+                        <ChevronRightIcon className="w-5 h-5" />
                       </button>
                     </div>
                   </div>
