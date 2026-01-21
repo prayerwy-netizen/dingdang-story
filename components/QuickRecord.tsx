@@ -13,8 +13,8 @@ const QuickRecord: React.FC<QuickRecordProps> = ({ familyCode }) => {
   const [totalScore, setTotalScore] = useState(0);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
-  // 每个任务的输入数量，key 是 task.id
-  const [quantities, setQuantities] = useState<Record<string, number>>({});
+  // 每个任务的输入分数，key 是 task.id，用字符串存储以便处理空值
+  const [scores, setScores] = useState<Record<string, string>>({});
 
   const today = new Date().toISOString().split('T')[0];
 
@@ -29,28 +29,40 @@ const QuickRecord: React.FC<QuickRecordProps> = ({ familyCode }) => {
       getRecordsByDate(familyCode, today),
       getTotalScore(familyCode),
     ]);
-    setTasks(taskList);
+    // 按分数从高到低排序
+    const sortedTasks = taskList.sort((a, b) => {
+      // 正数在前，负数在后；同类型按分数绝对值从高到低
+      if (a.type === 'positive' && b.type === 'negative') return -1;
+      if (a.type === 'negative' && b.type === 'positive') return 1;
+      return b.score - a.score;
+    });
+    setTasks(sortedTasks);
     setTodayRecords(records);
     setTotalScore(score);
-    // 初始化所有任务的数量为 0
-    const initialQuantities: Record<string, number> = {};
-    taskList.forEach(task => {
-      initialQuantities[task.id] = 0;
+    // 初始化所有任务的分数为空字符串（显示为空）
+    const initialScores: Record<string, string> = {};
+    sortedTasks.forEach(task => {
+      initialScores[task.id] = '';
     });
-    setQuantities(initialQuantities);
+    setScores(initialScores);
     setLoading(false);
   };
 
-  const handleQuantityChange = (taskId: string, value: number) => {
-    setQuantities(prev => ({
+  const handleScoreChange = (taskId: string, value: string) => {
+    // 只允许输入数字
+    const numericValue = value.replace(/[^0-9]/g, '');
+    setScores(prev => ({
       ...prev,
-      [taskId]: Math.max(0, value),
+      [taskId]: numericValue,
     }));
   };
 
   const handleSubmitAll = async () => {
-    // 找出所有数量 > 0 的任务
-    const tasksToSubmit = tasks.filter(task => quantities[task.id] > 0);
+    // 找出所有有输入分数的任务
+    const tasksToSubmit = tasks.filter(task => {
+      const inputScore = parseInt(scores[task.id]) || 0;
+      return inputScore > 0;
+    });
 
     if (tasksToSubmit.length === 0) {
       alert('请先输入要记录的分数');
@@ -62,14 +74,14 @@ const QuickRecord: React.FC<QuickRecordProps> = ({ familyCode }) => {
     let failCount = 0;
 
     for (const task of tasksToSubmit) {
-      const qty = quantities[task.id];
-      const score = task.type === 'positive' ? task.score * qty : -task.score * qty;
-      const taskName = qty > 1 ? `${task.name} x${qty}` : task.name;
+      const inputScore = parseInt(scores[task.id]) || 0;
+      // 负数任务自动转为负分
+      const finalScore = task.type === 'positive' ? inputScore : -inputScore;
 
       const result = await addRecord(familyCode, {
         task_id: task.id,
-        task_name: taskName,
-        score,
+        task_name: task.name,
+        score: finalScore,
       });
 
       if (result.success) {
@@ -85,7 +97,7 @@ const QuickRecord: React.FC<QuickRecordProps> = ({ familyCode }) => {
       alert(`提交完成：${successCount} 条成功，${failCount} 条失败`);
     }
 
-    // 重新加载数据（会重置所有输入为 0）
+    // 重新加载数据（会重置所有输入）
     loadData();
   };
 
@@ -103,10 +115,13 @@ const QuickRecord: React.FC<QuickRecordProps> = ({ familyCode }) => {
 
   // 计算本次预计得分
   const pendingScore = tasks.reduce((sum, task) => {
-    const qty = quantities[task.id] || 0;
-    if (qty === 0) return sum;
-    return sum + (task.type === 'positive' ? task.score * qty : -task.score * qty);
+    const inputScore = parseInt(scores[task.id]) || 0;
+    if (inputScore === 0) return sum;
+    return sum + (task.type === 'positive' ? inputScore : -inputScore);
   }, 0);
+
+  // 检查是否有输入
+  const hasInput = tasks.some(task => (parseInt(scores[task.id]) || 0) > 0);
 
   return (
     <div className="p-2 md:p-4">
@@ -122,8 +137,11 @@ const QuickRecord: React.FC<QuickRecordProps> = ({ familyCode }) => {
           </div>
           <div className="text-right">
             <p className="text-primary-500 text-sm">今日</p>
-            <p className="font-heading text-xl text-primary-700">
-              {todayRecords.reduce((sum, r) => sum + r.score, 0) >= 0 ? '+' : ''}
+            <p className={`font-heading text-xl ${
+              todayRecords.reduce((sum, r) => sum + r.score, 0) > 0 ? 'text-red-500' :
+              todayRecords.reduce((sum, r) => sum + r.score, 0) < 0 ? 'text-green-500' : 'text-primary-700'
+            }`}>
+              {todayRecords.reduce((sum, r) => sum + r.score, 0) > 0 ? '+' : ''}
               {todayRecords.reduce((sum, r) => sum + r.score, 0)}
             </p>
           </div>
@@ -169,20 +187,21 @@ const QuickRecord: React.FC<QuickRecordProps> = ({ familyCode }) => {
                     {task.unit}
                   </div>
 
-                  {/* 参考分数 */}
+                  {/* 参考分数：正数红色，负数绿色 */}
                   <div className={`col-span-2 text-center font-heading text-sm ${
-                    task.type === 'positive' ? 'text-amber-500' : 'text-red-500'
+                    task.type === 'positive' ? 'text-red-500' : 'text-green-500'
                   }`}>
                     {task.type === 'positive' ? '+' : '-'}{task.score}
                   </div>
 
-                  {/* 分数输入 */}
+                  {/* 分数输入：直接填分数，负数任务自动转负 */}
                   <div className="col-span-3 flex justify-center">
                     <input
-                      type="number"
-                      min="0"
-                      value={quantities[task.id] || 0}
-                      onChange={e => handleQuantityChange(task.id, parseInt(e.target.value) || 0)}
+                      type="text"
+                      inputMode="numeric"
+                      placeholder="0"
+                      value={scores[task.id] || ''}
+                      onChange={e => handleScoreChange(task.id, e.target.value)}
                       className="w-16 h-9 text-center border-2 border-primary-200 rounded-lg bg-white focus:border-primary-400 focus:outline-none text-primary-800 font-medium"
                     />
                   </div>
@@ -196,16 +215,16 @@ const QuickRecord: React.FC<QuickRecordProps> = ({ familyCode }) => {
             <div className="text-sm text-primary-500">
               本次预计：
               <span className={`font-heading text-lg ml-1 ${
-                pendingScore >= 0 ? 'text-accent-green' : 'text-red-500'
+                pendingScore > 0 ? 'text-red-500' : pendingScore < 0 ? 'text-green-500' : 'text-primary-400'
               }`}>
-                {pendingScore >= 0 ? '+' : ''}{pendingScore}
+                {pendingScore > 0 ? '+' : ''}{pendingScore}
               </span>
             </div>
             <button
               onClick={handleSubmitAll}
-              disabled={submitting || pendingScore === 0}
+              disabled={submitting || !hasInput}
               className={`px-6 py-3 rounded-xl font-heading text-white transition-colors ${
-                submitting || pendingScore === 0
+                submitting || !hasInput
                   ? 'bg-primary-300 cursor-not-allowed'
                   : 'bg-primary-500 hover:bg-primary-600 cursor-pointer'
               }`}
@@ -235,8 +254,8 @@ const QuickRecord: React.FC<QuickRecordProps> = ({ familyCode }) => {
                       )}
                     </div>
                     <div className="flex items-center gap-3">
-                      <span className={`font-heading ${record.score >= 0 ? 'text-accent-green' : 'text-red-500'}`}>
-                        {record.score >= 0 ? '+' : ''}{record.score}
+                      <span className={`font-heading ${record.score > 0 ? 'text-red-500' : 'text-green-500'}`}>
+                        {record.score > 0 ? '+' : ''}{record.score}
                       </span>
                       <button
                         onClick={() => handleDeleteRecord(record.id)}
