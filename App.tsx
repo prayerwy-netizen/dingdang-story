@@ -231,7 +231,7 @@ const App: React.FC = () => {
       <div className="min-h-screen bg-gradient-to-b from-sky-100 to-sky-200 flex items-center justify-center">
         <div className="text-center">
           <div className="text-6xl mb-4 animate-bounce">🔔</div>
-          <p className="text-sky-600 text-lg">叮当学堂加载中...</p>
+          <p className="text-sky-600 text-lg">宝贝学堂加载中...</p>
         </div>
       </div>
     );

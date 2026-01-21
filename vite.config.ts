@@ -19,8 +19,8 @@ export default defineConfig(({ mode }) => {
           registerType: 'autoUpdate',
           includeAssets: ['favicon.ico', 'apple-touch-icon.png', 'mask-icon.svg'],
           manifest: {
-            name: '叮当讲故事',
-            short_name: '叮当学堂',
+            name: '宝贝讲故事',
+            short_name: '宝贝学堂',
             description: '儿童国学启蒙应用 - 每天一首古诗，轻松学国学',
             theme_color: '#6366f1',
             background_color: '#f0f9ff',

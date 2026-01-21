@@ -507,7 +507,7 @@ const ChildMode: React.FC<ChildModeProps> = ({
                   {learningState === LearningState.LOADING_ASSETS ? (
                     <div className="w-full h-full flex flex-col items-center justify-center bg-gradient-to-br from-primary-100 to-primary-50">
                       <div className="w-16 h-16 border-4 border-primary-300 border-t-primary-500 rounded-full animate-spin mb-4"></div>
-                      <p className="font-heading text-primary-600 text-lg">叮当姐姐正在准备...</p>
+                      <p className="font-heading text-primary-600 text-lg">姐姐正在准备...</p>
                     </div>
                   ) : illustration ? (
                     <img src={illustration} alt="配图" className="w-full h-full object-cover" />

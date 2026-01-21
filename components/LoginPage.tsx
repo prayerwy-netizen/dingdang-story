@@ -89,7 +89,7 @@ export default function LoginPage({ onLoginSuccess }: LoginPageProps) {
         {/* Logo 和标题 */}
         <div className="text-center mb-8">
           <div className="text-6xl mb-4">🔔</div>
-          <h1 className="text-3xl font-bold text-sky-800">叮当学堂</h1>
+          <h1 className="text-3xl font-bold text-sky-800">宝贝学堂</h1>
           <p className="text-sky-600 mt-2">陪伴宝贝快乐成长</p>
         </div>
 
