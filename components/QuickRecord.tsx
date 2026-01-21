@@ -12,10 +12,9 @@ const QuickRecord: React.FC<QuickRecordProps> = ({ familyCode }) => {
   const [todayRecords, setTodayRecords] = useState<PointRecord[]>([]);
   const [totalScore, setTotalScore] = useState(0);
   const [loading, setLoading] = useState(true);
-  const [selectedTask, setSelectedTask] = useState<Task | null>(null);
-  const [quantity, setQuantity] = useState(1);
-  const [note, setNote] = useState('');
-  const [showAddModal, setShowAddModal] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  // 每个任务的输入数量，key 是 task.id
+  const [quantities, setQuantities] = useState<Record<string, number>>({});
 
   const today = new Date().toISOString().split('T')[0];
 
@@ -33,47 +32,61 @@ const QuickRecord: React.FC<QuickRecordProps> = ({ familyCode }) => {
     setTasks(taskList);
     setTodayRecords(records);
     setTotalScore(score);
+    // 初始化所有任务的数量为 0
+    const initialQuantities: Record<string, number> = {};
+    taskList.forEach(task => {
+      initialQuantities[task.id] = 0;
+    });
+    setQuantities(initialQuantities);
     setLoading(false);
   };
 
-  const handleQuickAdd = async (task: Task) => {
-    const score = task.type === 'positive' ? task.score : -task.score;
-    const result = await addRecord(familyCode, {
-      task_id: task.id,
-      task_name: task.name,
-      score,
-    });
-
-    if (result.success) {
-      loadData();
-    } else {
-      alert(result.error || '添加失败');
-    }
+  const handleQuantityChange = (taskId: string, value: number) => {
+    setQuantities(prev => ({
+      ...prev,
+      [taskId]: Math.max(0, value),
+    }));
   };
 
-  const handleAddWithQuantity = async () => {
-    if (!selectedTask) return;
+  const handleSubmitAll = async () => {
+    // 找出所有数量 > 0 的任务
+    const tasksToSubmit = tasks.filter(task => quantities[task.id] > 0);
 
-    const score = selectedTask.type === 'positive'
-      ? selectedTask.score * quantity
-      : -selectedTask.score * quantity;
-
-    const result = await addRecord(familyCode, {
-      task_id: selectedTask.id,
-      task_name: `${selectedTask.name} x${quantity}`,
-      score,
-      note: note || undefined,
-    });
-
-    if (result.success) {
-      setShowAddModal(false);
-      setSelectedTask(null);
-      setQuantity(1);
-      setNote('');
-      loadData();
-    } else {
-      alert(result.error || '添加失败');
+    if (tasksToSubmit.length === 0) {
+      alert('请先输入要记录的分数');
+      return;
     }
+
+    setSubmitting(true);
+    let successCount = 0;
+    let failCount = 0;
+
+    for (const task of tasksToSubmit) {
+      const qty = quantities[task.id];
+      const score = task.type === 'positive' ? task.score * qty : -task.score * qty;
+      const taskName = qty > 1 ? `${task.name} x${qty}` : task.name;
+
+      const result = await addRecord(familyCode, {
+        task_id: task.id,
+        task_name: taskName,
+        score,
+      });
+
+      if (result.success) {
+        successCount++;
+      } else {
+        failCount++;
+      }
+    }
+
+    setSubmitting(false);
+
+    if (failCount > 0) {
+      alert(`提交完成：${successCount} 条成功，${failCount} 条失败`);
+    }
+
+    // 重新加载数据（会重置所有输入为 0）
+    loadData();
   };
 
   const handleDeleteRecord = async (recordId: string) => {
@@ -88,20 +101,17 @@ const QuickRecord: React.FC<QuickRecordProps> = ({ familyCode }) => {
     }
   };
 
-  const openAddModal = (task: Task) => {
-    setSelectedTask(task);
-    setQuantity(1);
-    setNote('');
-    setShowAddModal(true);
-  };
-
-  const positiveTasks = tasks.filter(t => t.type === 'positive');
-  const negativeTasks = tasks.filter(t => t.type === 'negative');
+  // 计算本次预计得分
+  const pendingScore = tasks.reduce((sum, task) => {
+    const qty = quantities[task.id] || 0;
+    if (qty === 0) return sum;
+    return sum + (task.type === 'positive' ? task.score * qty : -task.score * qty);
+  }, 0);
 
   return (
-    <div className="p-4 md:p-6">
+    <div className="p-2 md:p-4">
       {/* 积分概览 */}
-      <div className="clay-card p-4 mb-6 bg-gradient-to-br from-accent-orange/10 to-candy-peach/30">
+      <div className="clay-card p-4 mb-4 bg-gradient-to-br from-accent-orange/10 to-candy-peach/30">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
             <span className="text-3xl">💰</span>
@@ -124,81 +134,85 @@ const QuickRecord: React.FC<QuickRecordProps> = ({ familyCode }) => {
         <div className="flex items-center justify-center py-12">
           <div className="w-12 h-12 border-4 border-primary-300 border-t-primary-500 rounded-full animate-spin"></div>
         </div>
+      ) : tasks.length === 0 ? (
+        <div className="clay-card p-8 text-center">
+          <div className="text-4xl mb-3">📋</div>
+          <p className="text-primary-500">暂无任务</p>
+          <p className="text-primary-400 text-sm mt-1">请先在任务管理中添加任务</p>
+        </div>
       ) : (
         <>
-          {/* 加分任务 */}
-          {positiveTasks.length > 0 && (
-            <div className="mb-6">
-              <h3 className="font-heading text-primary-800 mb-3 flex items-center gap-2">
-                <span className="text-accent-green">+</span> 加分任务
-              </h3>
-              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
-                {positiveTasks.map(task => (
-                  <div key={task.id} className="clay-card p-3">
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="font-medium text-primary-800 truncate">{task.name}</span>
-                      <span className="text-accent-green font-heading">+{task.score}</span>
-                    </div>
-                    <div className="flex gap-2">
-                      <button
-                        onClick={() => handleQuickAdd(task)}
-                        className="flex-1 py-2 bg-accent-green/10 text-accent-green rounded-lg text-sm font-medium cursor-pointer hover:bg-accent-green/20 transition-colors"
-                      >
-                        +1
-                      </button>
-                      <button
-                        onClick={() => openAddModal(task)}
-                        className="px-3 py-2 bg-primary-50 text-primary-600 rounded-lg text-sm cursor-pointer hover:bg-primary-100 transition-colors"
-                      >
-                        ...
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
+          {/* 表格式任务列表 */}
+          <div className="clay-card overflow-hidden mb-4">
+            {/* 表头 */}
+            <div className="bg-primary-500 text-white grid grid-cols-12 gap-2 px-3 py-3 text-sm font-medium">
+              <div className="col-span-4">任务名称</div>
+              <div className="col-span-3 text-center">计量单位</div>
+              <div className="col-span-2 text-center">参考分数</div>
+              <div className="col-span-3 text-center">分数</div>
             </div>
-          )}
 
-          {/* 扣分任务 */}
-          {negativeTasks.length > 0 && (
-            <div className="mb-6">
-              <h3 className="font-heading text-primary-800 mb-3 flex items-center gap-2">
-                <span className="text-red-500">-</span> 扣分任务
-              </h3>
-              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
-                {negativeTasks.map(task => (
-                  <div key={task.id} className="clay-card p-3">
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="font-medium text-primary-800 truncate">{task.name}</span>
-                      <span className="text-red-500 font-heading">-{task.score}</span>
-                    </div>
-                    <div className="flex gap-2">
-                      <button
-                        onClick={() => handleQuickAdd(task)}
-                        className="flex-1 py-2 bg-red-50 text-red-500 rounded-lg text-sm font-medium cursor-pointer hover:bg-red-100 transition-colors"
-                      >
-                        -1
-                      </button>
-                      <button
-                        onClick={() => openAddModal(task)}
-                        className="px-3 py-2 bg-primary-50 text-primary-600 rounded-lg text-sm cursor-pointer hover:bg-primary-100 transition-colors"
-                      >
-                        ...
-                      </button>
-                    </div>
+            {/* 任务行 */}
+            <div className="divide-y divide-primary-100">
+              {tasks.map(task => (
+                <div
+                  key={task.id}
+                  className="grid grid-cols-12 gap-2 px-3 py-3 items-center hover:bg-primary-50 transition-colors"
+                >
+                  {/* 任务名称 */}
+                  <div className="col-span-4 font-medium text-primary-800 text-sm truncate">
+                    {task.name}
                   </div>
-                ))}
-              </div>
-            </div>
-          )}
 
-          {tasks.length === 0 && (
-            <div className="clay-card p-8 text-center">
-              <div className="text-4xl mb-3">📋</div>
-              <p className="text-primary-500">暂无任务</p>
-              <p className="text-primary-400 text-sm mt-1">请先在任务管理中添加任务</p>
+                  {/* 计量单位 */}
+                  <div className="col-span-3 text-center text-primary-500 text-sm">
+                    {task.unit}
+                  </div>
+
+                  {/* 参考分数 */}
+                  <div className={`col-span-2 text-center font-heading text-sm ${
+                    task.type === 'positive' ? 'text-amber-500' : 'text-red-500'
+                  }`}>
+                    {task.type === 'positive' ? '+' : '-'}{task.score}
+                  </div>
+
+                  {/* 分数输入 */}
+                  <div className="col-span-3 flex justify-center">
+                    <input
+                      type="number"
+                      min="0"
+                      value={quantities[task.id] || 0}
+                      onChange={e => handleQuantityChange(task.id, parseInt(e.target.value) || 0)}
+                      className="w-16 h-9 text-center border-2 border-primary-200 rounded-lg bg-white focus:border-primary-400 focus:outline-none text-primary-800 font-medium"
+                    />
+                  </div>
+                </div>
+              ))}
             </div>
-          )}
+          </div>
+
+          {/* 提交按钮 */}
+          <div className="flex items-center justify-between mb-6">
+            <div className="text-sm text-primary-500">
+              本次预计：
+              <span className={`font-heading text-lg ml-1 ${
+                pendingScore >= 0 ? 'text-accent-green' : 'text-red-500'
+              }`}>
+                {pendingScore >= 0 ? '+' : ''}{pendingScore}
+              </span>
+            </div>
+            <button
+              onClick={handleSubmitAll}
+              disabled={submitting || pendingScore === 0}
+              className={`px-6 py-3 rounded-xl font-heading text-white transition-colors ${
+                submitting || pendingScore === 0
+                  ? 'bg-primary-300 cursor-not-allowed'
+                  : 'bg-primary-500 hover:bg-primary-600 cursor-pointer'
+              }`}
+            >
+              {submitting ? '提交中...' : '提交记录'}
+            </button>
+          </div>
 
           {/* 今日记录 */}
           <div>
@@ -239,67 +253,6 @@ const QuickRecord: React.FC<QuickRecordProps> = ({ familyCode }) => {
             )}
           </div>
         </>
-      )}
-
-      {/* 添加弹窗 */}
-      {showAddModal && selectedTask && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="clay-card p-6 w-full max-w-md">
-            <h3 className="font-heading text-xl text-primary-800 mb-4">
-              {selectedTask.name}
-            </h3>
-
-            <div className="mb-4">
-              <label className="block text-primary-600 text-sm mb-2">数量</label>
-              <div className="flex items-center gap-4">
-                <button
-                  onClick={() => setQuantity(Math.max(1, quantity - 1))}
-                  className="w-10 h-10 rounded-xl bg-primary-100 text-primary-600 font-bold cursor-pointer hover:bg-primary-200"
-                >
-                  -
-                </button>
-                <span className="font-heading text-2xl text-primary-800 w-12 text-center">
-                  {quantity}
-                </span>
-                <button
-                  onClick={() => setQuantity(quantity + 1)}
-                  className="w-10 h-10 rounded-xl bg-primary-100 text-primary-600 font-bold cursor-pointer hover:bg-primary-200"
-                >
-                  +
-                </button>
-                <span className={`font-heading text-xl ml-auto ${selectedTask.type === 'positive' ? 'text-accent-green' : 'text-red-500'}`}>
-                  {selectedTask.type === 'positive' ? '+' : '-'}{selectedTask.score * quantity}
-                </span>
-              </div>
-            </div>
-
-            <div className="mb-6">
-              <label className="block text-primary-600 text-sm mb-2">备注（可选）</label>
-              <input
-                type="text"
-                value={note}
-                onChange={e => setNote(e.target.value)}
-                placeholder="添加备注..."
-                className="w-full px-4 py-3 rounded-xl border border-primary-200 focus:outline-none focus:ring-2 focus:ring-primary-400"
-              />
-            </div>
-
-            <div className="flex gap-3">
-              <button
-                onClick={() => setShowAddModal(false)}
-                className="flex-1 py-3 rounded-xl bg-primary-100 text-primary-600 font-medium cursor-pointer hover:bg-primary-200"
-              >
-                取消
-              </button>
-              <button
-                onClick={handleAddWithQuantity}
-                className="flex-1 py-3 rounded-xl bg-primary-500 text-white font-medium cursor-pointer hover:bg-primary-600"
-              >
-                确认
-              </button>
-            </div>
-          </div>
-        </div>
       )}
     </div>
   );

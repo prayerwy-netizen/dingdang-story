@@ -3,6 +3,7 @@ import { AppMode, ChildProfile, DiaryEntry, ClassicContent } from './types';
 import { CLASSIC_LIBRARY, getTodayContentIndex } from './constants';
 import ChildMode from './components/ChildMode';
 import ParentMode from './components/ParentMode';
+import ParentGate from './components/ParentGate';
 import FamilyCodeEntry from './components/FamilyCodeEntry';
 
 // 服务层导入
@@ -18,6 +19,7 @@ const App: React.FC = () => {
   });
 
   const [mode, setMode] = useState<AppMode>(AppMode.CHILD);
+  const [showParentGate, setShowParentGate] = useState(false);
   const [profile, setProfile] = useState<familyService.Profile | null>(null);
   const [diaries, setDiaries] = useState<DiaryEntry[]>([]);
   const [customContents, setCustomContents] = useState<ClassicContent[]>([]);
@@ -171,14 +173,20 @@ const App: React.FC = () => {
     }
   };
 
-  // 打开家长模式
+  // 打开家长验证页面
   const handleOpenParentGate = () => {
-    const password = prompt("请输入家长密码 (默认 1234)");
-    if (password === '1234') {
-      setMode(AppMode.PARENT);
-    } else if (password !== null) {
-      alert("密码错误，请重试");
-    }
+    setShowParentGate(true);
+  };
+
+  // 家长验证成功
+  const handleParentGateSuccess = () => {
+    setShowParentGate(false);
+    setMode(AppMode.PARENT);
+  };
+
+  // 取消家长验证
+  const handleParentGateCancel = () => {
+    setShowParentGate(false);
   };
 
   // 重置课程
@@ -240,6 +248,16 @@ const App: React.FC = () => {
   // 未设置家庭码，显示输入页面
   if (!familyCode) {
     return <FamilyCodeEntry onCodeSubmit={handleFamilyCodeSubmit} />;
+  }
+
+  // 显示家长验证页面
+  if (showParentGate) {
+    return (
+      <ParentGate
+        onSuccess={handleParentGateSuccess}
+        onCancel={handleParentGateCancel}
+      />
+    );
   }
 
   return (
