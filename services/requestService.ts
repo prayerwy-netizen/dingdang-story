@@ -1,48 +1,43 @@
-import { supabase, TABLES } from './supabase';
+import { callApi, callApiSafe } from './apiService';
 import { GiftRequest } from '../types';
-import { getTotalScore, addRecord } from './recordService';
-
-// 数据库记录类型
-interface RequestDbRow {
-  id: string;
-  family_code: string;
-  gift_id: string;
-  gift_name: string;
-  score: number;
-  status: 'pending' | 'approved' | 'rejected';
-  date: string;
-  created_at?: string;
-}
+import { encrypt, decrypt } from './cryptoService';
 
 // 获取兑换申请列表
 export async function getRequests(familyCode: string): Promise<GiftRequest[]> {
-  const { data, error } = await supabase
-    .from(TABLES.REQUESTS)
-    .select('*')
-    .eq('family_code', familyCode)
-    .order('date', { ascending: false });
+  try {
+    const data = await callApi<GiftRequest[]>('getRequests', { familyCode, pendingOnly: false });
 
-  if (error) {
+    // 解密 gift_name
+    const decrypted = await Promise.all(
+      (data || []).map(async (request) => ({
+        ...request,
+        gift_name: await decrypt(request.gift_name, familyCode),
+      }))
+    );
+    return decrypted;
+  } catch (error) {
     console.error('获取兑换申请列表失败:', error);
     return [];
   }
-  return (data || []).map(toFrontendRequest);
 }
 
 // 获取待审批的申请
 export async function getPendingRequests(familyCode: string): Promise<GiftRequest[]> {
-  const { data, error } = await supabase
-    .from(TABLES.REQUESTS)
-    .select('*')
-    .eq('family_code', familyCode)
-    .eq('status', 'pending')
-    .order('date', { ascending: false });
+  try {
+    const data = await callApi<GiftRequest[]>('getRequests', { familyCode, pendingOnly: true });
 
-  if (error) {
+    // 解密 gift_name
+    const decrypted = await Promise.all(
+      (data || []).map(async (request) => ({
+        ...request,
+        gift_name: await decrypt(request.gift_name, familyCode),
+      }))
+    );
+    return decrypted;
+  } catch (error) {
     console.error('获取待审批申请失败:', error);
     return [];
   }
-  return (data || []).map(toFrontendRequest);
 }
 
 // 创建兑换申请
@@ -54,142 +49,55 @@ export async function createRequest(
     score: number;
   }
 ): Promise<{ success: boolean; data?: GiftRequest; error?: string }> {
-  // 先检查积分是否足够
-  const totalScore = await getTotalScore(familyCode);
-  if (totalScore < request.score) {
-    return { success: false, error: '积分不足' };
+  // 加密 gift_name
+  const encryptedGiftName = await encrypt(request.gift_name, familyCode);
+
+  const result = await callApiSafe<GiftRequest>('createRequest', {
+    familyCode,
+    request: { ...request, gift_name: encryptedGiftName },
+  });
+
+  if (result.success && result.data) {
+    // 返回解密后的数据
+    return {
+      success: true,
+      data: { ...result.data, gift_name: request.gift_name },
+    };
   }
-
-  const today = new Date().toISOString().split('T')[0];
-
-  const { data, error } = await supabase
-    .from(TABLES.REQUESTS)
-    .insert({
-      family_code: familyCode,
-      gift_id: request.gift_id,
-      gift_name: request.gift_name,
-      score: request.score,
-      status: 'pending',
-      date: today,
-    })
-    .select()
-    .single();
-
-  if (error) {
-    console.error('创建兑换申请失败:', error);
-    return { success: false, error: error.message };
-  }
-  return { success: true, data: toFrontendRequest(data) };
+  return { success: result.success, error: result.error };
 }
 
 // 批准申请
 export async function approveRequest(
   requestId: string
 ): Promise<{ success: boolean; error?: string }> {
-  // 获取申请详情
-  const { data: request, error: fetchError } = await supabase
-    .from(TABLES.REQUESTS)
-    .select('*')
-    .eq('id', requestId)
-    .single();
-
-  if (fetchError || !request) {
-    return { success: false, error: '申请不存在' };
-  }
-
-  // 检查积分是否足够
-  const totalScore = await getTotalScore(request.family_code);
-  if (totalScore < request.score) {
-    return { success: false, error: '积分不足，无法批准' };
-  }
-
-  // 更新申请状态
-  const { error: updateError } = await supabase
-    .from(TABLES.REQUESTS)
-    .update({ status: 'approved' })
-    .eq('id', requestId);
-
-  if (updateError) {
-    console.error('批准申请失败:', updateError);
-    return { success: false, error: updateError.message };
-  }
-
-  // 扣除积分
-  const result = await addRecord(request.family_code, {
-    task_name: `兑换：${request.gift_name}`,
-    score: -request.score,
-    note: '礼物兑换扣除',
-  });
-
-  if (!result.success) {
-    // 回滚状态
-    await supabase
-      .from(TABLES.REQUESTS)
-      .update({ status: 'pending' })
-      .eq('id', requestId);
-    return { success: false, error: '积分扣除失败' };
-  }
-
-  return { success: true };
+  const result = await callApiSafe<{ success: boolean; error?: string }>('approveRequest', { requestId });
+  return { success: result.data?.success ?? result.success, error: result.data?.error || result.error };
 }
 
 // 拒绝申请
 export async function rejectRequest(
   requestId: string
 ): Promise<{ success: boolean; error?: string }> {
-  const { error } = await supabase
-    .from(TABLES.REQUESTS)
-    .update({ status: 'rejected' })
-    .eq('id', requestId);
-
-  if (error) {
-    console.error('拒绝申请失败:', error);
-    return { success: false, error: error.message };
-  }
-  return { success: true };
+  const result = await callApiSafe('rejectRequest', { requestId });
+  return { success: result.success, error: result.error };
 }
 
 // 删除申请（仅限待审批状态）
 export async function deleteRequest(
   requestId: string
 ): Promise<{ success: boolean; error?: string }> {
-  const { error } = await supabase
-    .from(TABLES.REQUESTS)
-    .delete()
-    .eq('id', requestId)
-    .eq('status', 'pending');
-
-  if (error) {
-    console.error('删除申请失败:', error);
-    return { success: false, error: error.message };
-  }
-  return { success: true };
+  const result = await callApiSafe('deleteRequest', { requestId });
+  return { success: result.success, error: result.error };
 }
 
 // 获取待审批数量
 export async function getPendingCount(familyCode: string): Promise<number> {
-  const { count, error } = await supabase
-    .from(TABLES.REQUESTS)
-    .select('*', { count: 'exact', head: true })
-    .eq('family_code', familyCode)
-    .eq('status', 'pending');
-
-  if (error) {
+  try {
+    const data = await callApi<{ count: number }>('getPendingCount', { familyCode });
+    return data?.count || 0;
+  } catch (error) {
     console.error('获取待审批数量失败:', error);
     return 0;
   }
-  return count || 0;
-}
-
-// 转换为前端格式
-function toFrontendRequest(record: RequestDbRow): GiftRequest {
-  return {
-    id: record.id,
-    family_code: record.family_code,
-    gift_id: record.gift_id,
-    gift_name: record.gift_name,
-    score: record.score,
-    status: record.status,
-    date: record.date,
-  };
 }

@@ -1,47 +1,43 @@
-import { supabase, TABLES } from './supabase';
+import { callApi, callApiSafe } from './apiService';
 import { Gift } from '../types';
-
-// 数据库记录类型
-interface GiftRecord {
-  id: string;
-  family_code: string;
-  name: string;
-  image: string;
-  score: number;
-  enabled: boolean;
-  created_at: string;
-  updated_at?: string;
-}
+import { encrypt, decrypt } from './cryptoService';
 
 // 获取礼物列表
 export async function getGifts(familyCode: string): Promise<Gift[]> {
-  const { data, error } = await supabase
-    .from(TABLES.GIFTS)
-    .select('*')
-    .eq('family_code', familyCode)
-    .order('created_at', { ascending: true });
+  try {
+    const data = await callApi<Gift[]>('getGifts', { familyCode, enabledOnly: false });
 
-  if (error) {
+    // 解密礼物名
+    const decrypted = await Promise.all(
+      (data || []).map(async (gift) => ({
+        ...gift,
+        name: await decrypt(gift.name, familyCode),
+      }))
+    );
+    return decrypted;
+  } catch (error) {
     console.error('获取礼物列表失败:', error);
     return [];
   }
-  return (data || []).map(toFrontendGift);
 }
 
 // 获取启用的礼物列表
 export async function getEnabledGifts(familyCode: string): Promise<Gift[]> {
-  const { data, error } = await supabase
-    .from(TABLES.GIFTS)
-    .select('*')
-    .eq('family_code', familyCode)
-    .eq('enabled', true)
-    .order('score', { ascending: true });
+  try {
+    const data = await callApi<Gift[]>('getGifts', { familyCode, enabledOnly: true });
 
-  if (error) {
+    // 解密礼物名
+    const decrypted = await Promise.all(
+      (data || []).map(async (gift) => ({
+        ...gift,
+        name: await decrypt(gift.name, familyCode),
+      }))
+    );
+    return decrypted;
+  } catch (error) {
     console.error('获取启用礼物列表失败:', error);
     return [];
   }
-  return (data || []).map(toFrontendGift);
 }
 
 // 创建礼物
@@ -53,43 +49,35 @@ export async function createGift(
     score: number;
   }
 ): Promise<{ success: boolean; data?: Gift; error?: string }> {
-  const { data, error } = await supabase
-    .from(TABLES.GIFTS)
-    .insert({
-      family_code: familyCode,
-      name: gift.name,
-      image: gift.image,
-      score: gift.score,
-      enabled: true,
-    })
-    .select()
-    .single();
+  // 加密礼物名
+  const encryptedName = await encrypt(gift.name, familyCode);
 
-  if (error) {
-    console.error('创建礼物失败:', error);
-    return { success: false, error: error.message };
+  const result = await callApiSafe<Gift>('createGift', {
+    familyCode,
+    gift: { ...gift, name: encryptedName },
+  });
+
+  if (result.success && result.data) {
+    // 返回解密后的数据
+    return { success: true, data: { ...result.data, name: gift.name } };
   }
-  return { success: true, data: toFrontendGift(data) };
+  return { success: result.success, error: result.error };
 }
 
 // 更新礼物
 export async function updateGift(
   giftId: string,
-  updates: Partial<Pick<Gift, 'name' | 'image' | 'score' | 'enabled'>>
+  updates: Partial<Pick<Gift, 'name' | 'image' | 'score' | 'enabled'>>,
+  familyCode?: string
 ): Promise<{ success: boolean; error?: string }> {
-  const { error } = await supabase
-    .from(TABLES.GIFTS)
-    .update({
-      ...updates,
-      updated_at: new Date().toISOString(),
-    })
-    .eq('id', giftId);
-
-  if (error) {
-    console.error('更新礼物失败:', error);
-    return { success: false, error: error.message };
+  // 如果更新name且有familyCode，则加密
+  const encryptedUpdates = { ...updates };
+  if (updates.name && familyCode) {
+    encryptedUpdates.name = await encrypt(updates.name, familyCode);
   }
-  return { success: true };
+
+  const result = await callApiSafe('updateGift', { giftId, updates: encryptedUpdates });
+  return { success: result.success, error: result.error };
 }
 
 // 切换礼物启用状态
@@ -97,35 +85,14 @@ export async function toggleGiftEnabled(
   giftId: string,
   enabled: boolean
 ): Promise<{ success: boolean; error?: string }> {
-  return updateGift(giftId, { enabled });
+  const result = await callApiSafe('toggleGiftEnabled', { giftId, enabled });
+  return { success: result.success, error: result.error };
 }
 
 // 删除礼物
 export async function deleteGift(
   giftId: string
 ): Promise<{ success: boolean; error?: string }> {
-  const { error } = await supabase
-    .from(TABLES.GIFTS)
-    .delete()
-    .eq('id', giftId);
-
-  if (error) {
-    console.error('删除礼物失败:', error);
-    return { success: false, error: error.message };
-  }
-  return { success: true };
-}
-
-// 转换为前端格式
-function toFrontendGift(record: GiftRecord): Gift {
-  return {
-    id: record.id,
-    family_code: record.family_code,
-    name: record.name,
-    image: record.image,
-    score: record.score,
-    enabled: record.enabled,
-    created_at: record.created_at,
-    updated_at: record.updated_at,
-  };
+  const result = await callApiSafe('deleteGift', { giftId });
+  return { success: result.success, error: result.error };
 }

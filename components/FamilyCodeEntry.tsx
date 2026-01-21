@@ -67,9 +67,16 @@ export default function FamilyCodeEntry({ onCodeSubmit }: FamilyCodeEntryProps) 
             进入学堂
           </button>
 
-          <p className="text-xs text-gray-400 mt-4 text-center">
-            首次使用？随便设一个码，记住它就行
-          </p>
+          {/* 重要提示 */}
+          <div className="mt-4 p-3 bg-amber-50 rounded-xl border border-amber-200">
+            <div className="flex items-start gap-2">
+              <span className="text-amber-500 text-lg">🔐</span>
+              <div className="text-xs text-amber-700">
+                <p className="font-medium mb-1">请牢记您的家庭码</p>
+                <p>您的数据将使用家庭码加密存储，任何人（包括管理员）都无法查看您的原始数据。如果忘记家庭码，数据将无法恢复。</p>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     </div>

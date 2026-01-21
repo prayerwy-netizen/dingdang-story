@@ -1,5 +1,6 @@
-import { supabase, TABLES } from './supabase';
+import { callApi, callApiSafe } from './apiService';
 import type { ClassicContent } from '../types';
+import { encrypt, decrypt } from './cryptoService';
 
 // ========== Profile ==========
 
@@ -17,30 +18,13 @@ export interface Profile {
 
 // 获取或创建 Profile
 export async function getOrCreateProfile(familyCode: string): Promise<Profile | null> {
-  // 先尝试获取
-  const { data: existing, error: fetchError } = await supabase
-    .from(TABLES.PROFILES)
-    .select('*')
-    .eq('family_code', familyCode)
-    .single();
-
-  if (existing) {
-    return existing;
-  }
-
-  // 不存在则创建
-  const { data: created, error: createError } = await supabase
-    .from(TABLES.PROFILES)
-    .insert({ family_code: familyCode })
-    .select()
-    .single();
-
-  if (createError) {
-    console.error('创建 Profile 失败:', createError);
+  try {
+    const data = await callApi<Profile>('getOrCreateProfile', { familyCode });
+    return data;
+  } catch (error) {
+    console.error('获取 Profile 失败:', error);
     return null;
   }
-
-  return created;
 }
 
 // 更新 Profile
@@ -48,36 +32,14 @@ export async function updateProfile(
   familyCode: string,
   updates: Partial<Pick<Profile, 'name' | 'age' | 'red_flowers' | 'course_offset'>>
 ): Promise<{ success: boolean; error?: string }> {
-  const { error } = await supabase
-    .from(TABLES.PROFILES)
-    .update(updates)
-    .eq('family_code', familyCode);
-
-  if (error) {
-    console.error('更新 Profile 失败:', error);
-    return { success: false, error: error.message };
-  }
-  return { success: true };
+  const result = await callApiSafe('updateProfile', { familyCode, updates });
+  return { success: result.success, error: result.error };
 }
 
 // 重置课程进度
 export async function resetCourseProgress(familyCode: string, newOffset: number): Promise<{ success: boolean; error?: string }> {
-  // 设置 course_offset 为当前 baseIndex，这样 todayIndex = baseIndex - newOffset = 0
-  const updateResult = await updateProfile(familyCode, { course_offset: newOffset });
-  if (!updateResult.success) return updateResult;
-
-  // 删除学习记录
-  const { error } = await supabase
-    .from(TABLES.LEARNING_RECORDS)
-    .delete()
-    .eq('family_code', familyCode);
-
-  if (error) {
-    console.error('删除学习记录失败:', error);
-    return { success: false, error: error.message };
-  }
-
-  return { success: true };
+  const result = await callApiSafe('resetCourseProgress', { familyCode, newOffset });
+  return { success: result.success, error: result.error };
 }
 
 // ========== Diary ==========
@@ -94,69 +56,63 @@ export interface DiaryRecord {
 }
 
 export async function getDiaries(familyCode: string): Promise<DiaryRecord[]> {
-  const { data, error } = await supabase
-    .from(TABLES.DIARIES)
-    .select('*')
-    .eq('family_code', familyCode)
-    .order('date', { ascending: false });
+  try {
+    const data = await callApi<DiaryRecord[]>('getDiaries', { familyCode });
 
-  if (error) {
+    // 解密内容
+    const decrypted = await Promise.all(
+      (data || []).map(async (record) => ({
+        ...record,
+        content: await decrypt(record.content, familyCode),
+      }))
+    );
+    return decrypted;
+  } catch (error) {
     console.error('获取日记失败:', error);
     return [];
   }
-  return data || [];
 }
 
 export async function createDiary(
   familyCode: string,
   diary: { date: string; content: string; photos?: string[]; is_draft?: boolean }
 ): Promise<{ success: boolean; data?: DiaryRecord; error?: string }> {
-  const { data, error } = await supabase
-    .from(TABLES.DIARIES)
-    .insert({
-      family_code: familyCode,
-      date: diary.date,
-      content: diary.content,
-      photos: diary.photos || [],
-      is_draft: diary.is_draft || false,
-    })
-    .select()
-    .single();
+  // 加密内容
+  const encryptedContent = await encrypt(diary.content, familyCode);
 
-  if (error) {
-    console.error('创建日记失败:', error);
-    return { success: false, error: error.message };
+  const result = await callApiSafe<DiaryRecord>('createDiary', {
+    familyCode,
+    diary: {
+      ...diary,
+      content: encryptedContent,
+    },
+  });
+
+  if (result.success && result.data) {
+    // 返回时解密，供前端显示
+    return { success: true, data: { ...result.data, content: diary.content } };
   }
-  return { success: true, data };
+  return { success: result.success, error: result.error };
 }
 
 export async function updateDiary(
   diaryId: string,
-  updates: Partial<Pick<DiaryRecord, 'content' | 'photos' | 'is_draft'>>
+  updates: Partial<Pick<DiaryRecord, 'content' | 'photos' | 'is_draft'>>,
+  familyCode?: string
 ): Promise<{ success: boolean; error?: string }> {
-  const { error } = await supabase
-    .from(TABLES.DIARIES)
-    .update(updates)
-    .eq('id', diaryId);
-
-  if (error) {
-    console.error('更新日记失败:', error);
-    return { success: false, error: error.message };
+  // 如果更新内容且有家庭码，则加密
+  const encryptedUpdates = { ...updates };
+  if (updates.content && familyCode) {
+    encryptedUpdates.content = await encrypt(updates.content, familyCode);
   }
-  return { success: true };
+
+  const result = await callApiSafe('updateDiary', { diaryId, updates: encryptedUpdates });
+  return { success: result.success, error: result.error };
 }
 
 export async function deleteDiary(diaryId: string): Promise<{ success: boolean; error?: string }> {
-  const { error } = await supabase
-    .from(TABLES.DIARIES)
-    .delete()
-    .eq('id', diaryId);
-
-  if (error) {
-    console.error('删除日记失败:', error);
-    return { success: false, error: error.message };
-  }
-  return { success: true };
+  const result = await callApiSafe('deleteDiary', { diaryId });
+  return { success: result.success, error: result.error };
 }
 
 // ========== Custom Content ==========
@@ -172,56 +128,66 @@ export interface CustomContentRecord {
 }
 
 export async function getCustomContents(familyCode: string): Promise<CustomContentRecord[]> {
-  const { data, error } = await supabase
-    .from(TABLES.CUSTOM_CONTENTS)
-    .select('*')
-    .eq('family_code', familyCode)
-    .order('sort_order', { ascending: true });
+  try {
+    const data = await callApi<CustomContentRecord[]>('getCustomContents', { familyCode });
 
-  if (error) {
+    // 解密内容
+    const decrypted = await Promise.all(
+      (data || []).map(async (record) => ({
+        ...record,
+        title: await decrypt(record.title, familyCode),
+        text: await decrypt(record.text, familyCode),
+        pinyin: record.pinyin ? await decrypt(record.pinyin, familyCode) : null,
+      }))
+    );
+    return decrypted;
+  } catch (error) {
     console.error('获取自定义内容失败:', error);
     return [];
   }
-  return data || [];
 }
 
 export async function createCustomContent(
   familyCode: string,
   content: { title: string; text: string; pinyin?: string }
 ): Promise<{ success: boolean; data?: CustomContentRecord; error?: string }> {
+  // 先获取现有内容以确定排序
   const existing = await getCustomContents(familyCode);
   const maxOrder = existing.reduce((max, c) => Math.max(max, c.sort_order), -1);
 
-  const { data, error } = await supabase
-    .from(TABLES.CUSTOM_CONTENTS)
-    .insert({
-      family_code: familyCode,
-      title: content.title,
-      text: content.text,
-      pinyin: content.pinyin || null,
-      sort_order: maxOrder + 1,
-    })
-    .select()
-    .single();
+  // 加密内容
+  const encryptedTitle = await encrypt(content.title, familyCode);
+  const encryptedText = await encrypt(content.text, familyCode);
+  const encryptedPinyin = content.pinyin ? await encrypt(content.pinyin, familyCode) : null;
 
-  if (error) {
-    console.error('创建自定义内容失败:', error);
-    return { success: false, error: error.message };
+  const result = await callApiSafe<CustomContentRecord>('createCustomContent', {
+    familyCode,
+    content: {
+      title: encryptedTitle,
+      text: encryptedText,
+      pinyin: encryptedPinyin,
+    },
+    sortOrder: maxOrder + 1,
+  });
+
+  if (result.success && result.data) {
+    // 返回解密后的数据供前端显示
+    return {
+      success: true,
+      data: {
+        ...result.data,
+        title: content.title,
+        text: content.text,
+        pinyin: content.pinyin || null,
+      },
+    };
   }
-  return { success: true, data };
+  return { success: result.success, error: result.error };
 }
 
 export async function deleteCustomContent(contentId: string): Promise<{ success: boolean; error?: string }> {
-  const { error } = await supabase
-    .from(TABLES.CUSTOM_CONTENTS)
-    .delete()
-    .eq('id', contentId);
-
-  if (error) {
-    console.error('删除自定义内容失败:', error);
-    return { success: false, error: error.message };
-  }
-  return { success: true };
+  const result = await callApiSafe('deleteCustomContent', { contentId });
+  return { success: result.success, error: result.error };
 }
 
 // ========== Learning Records ==========
@@ -234,16 +200,13 @@ export interface LearningRecord {
 }
 
 export async function getLearningRecords(familyCode: string): Promise<LearningRecord[]> {
-  const { data, error } = await supabase
-    .from(TABLES.LEARNING_RECORDS)
-    .select('*')
-    .eq('family_code', familyCode);
-
-  if (error) {
+  try {
+    const data = await callApi<LearningRecord[]>('getLearningRecords', { familyCode });
+    return data || [];
+  } catch (error) {
     console.error('获取学习记录失败:', error);
     return [];
   }
-  return data || [];
 }
 
 export async function getLearnedCourseIds(familyCode: string): Promise<Set<string>> {
@@ -255,18 +218,8 @@ export async function markCourseAsLearned(
   familyCode: string,
   courseId: string
 ): Promise<{ success: boolean; error?: string }> {
-  const { error } = await supabase
-    .from(TABLES.LEARNING_RECORDS)
-    .upsert(
-      { family_code: familyCode, course_id: courseId },
-      { onConflict: 'family_code,course_id' }
-    );
-
-  if (error) {
-    console.error('标记学习记录失败:', error);
-    return { success: false, error: error.message };
-  }
-  return { success: true };
+  const result = await callApiSafe('markCourseAsLearned', { familyCode, courseId });
+  return { success: result.success, error: result.error };
 }
 
 // ========== 转换函数 ==========
@@ -303,4 +256,49 @@ export function toFrontendContent(record: CustomContentRecord): ClassicContent {
     category: 'custom',
     isLearned: false,
   };
+}
+
+// ========== 批量加载 ==========
+
+export interface AllUserData {
+  profile: Profile;
+  diaries: DiaryRecord[];
+  customContents: CustomContentRecord[];
+  learningRecords: LearningRecord[];
+}
+
+// 批量加载所有用户数据（单次 API 调用）
+export async function loadAllUserData(familyCode: string): Promise<AllUserData | null> {
+  try {
+    const data = await callApi<AllUserData>('loadAllUserData', { familyCode });
+    if (!data) return null;
+
+    // 解密日记内容
+    const decryptedDiaries = await Promise.all(
+      (data.diaries || []).map(async (record) => ({
+        ...record,
+        content: await decrypt(record.content, familyCode),
+      }))
+    );
+
+    // 解密自定义内容
+    const decryptedCustomContents = await Promise.all(
+      (data.customContents || []).map(async (record) => ({
+        ...record,
+        title: await decrypt(record.title, familyCode),
+        text: await decrypt(record.text, familyCode),
+        pinyin: record.pinyin ? await decrypt(record.pinyin, familyCode) : null,
+      }))
+    );
+
+    return {
+      profile: data.profile,
+      diaries: decryptedDiaries,
+      customContents: decryptedCustomContents,
+      learningRecords: data.learningRecords || [],
+    };
+  } catch (error) {
+    console.error('批量加载用户数据失败:', error);
+    return null;
+  }
 }

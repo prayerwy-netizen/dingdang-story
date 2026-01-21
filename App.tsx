@@ -38,25 +38,19 @@ const App: React.FC = () => {
   // 课程偏移量
   const courseStartOffset = profile?.course_offset || 0;
 
-  // 加载用户数据
+  // 加载用户数据（单次 API 调用批量加载）
   const loadUserData = useCallback(async (code: string) => {
     setLoading(true);
 
     try {
-      // 获取或创建 Profile
-      const profileData = await familyService.getOrCreateProfile(code);
-      setProfile(profileData);
-
-      // 并行加载其他数据
-      const [diaryRecords, customRecords, learnedIds] = await Promise.all([
-        familyService.getDiaries(code),
-        familyService.getCustomContents(code),
-        familyService.getLearnedCourseIds(code),
-      ]);
-
-      setDiaries(diaryRecords.map(familyService.toFrontendDiary));
-      setCustomContents(customRecords.map(familyService.toFrontendContent));
-      setLearnedCourseIds(learnedIds);
+      // 使用批量加载接口，只需一次 API 调用
+      const data = await familyService.loadAllUserData(code);
+      if (data) {
+        setProfile(data.profile);
+        setDiaries(data.diaries.map(familyService.toFrontendDiary));
+        setCustomContents(data.customContents.map(familyService.toFrontendContent));
+        setLearnedCourseIds(new Set(data.learningRecords.map(r => r.course_id)));
+      }
     } catch (error) {
       console.error('加载数据失败:', error);
     } finally {
@@ -121,7 +115,7 @@ const App: React.FC = () => {
         content: entry.content,
         photos: entry.photos,
         is_draft: entry.isDraft || false,
-      });
+      }, familyCode);
       if (result.success) {
         setDiaries(prev => prev.map(d => d.id === entry.id ? entry : d));
       }

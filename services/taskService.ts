@@ -1,48 +1,43 @@
-import { supabase, TABLES } from './supabase';
+import { callApi, callApiSafe } from './apiService';
 import { Task } from '../types';
-
-// 数据库记录类型
-interface TaskRecord {
-  id: string;
-  family_code: string;
-  name: string;
-  unit: string;
-  score: number;
-  type: 'positive' | 'negative';
-  enabled: boolean;
-  created_at: string;
-  updated_at?: string;
-}
+import { encrypt, decrypt } from './cryptoService';
 
 // 获取任务列表
 export async function getTasks(familyCode: string): Promise<Task[]> {
-  const { data, error } = await supabase
-    .from(TABLES.TASKS)
-    .select('*')
-    .eq('family_code', familyCode)
-    .order('created_at', { ascending: true });
+  try {
+    const data = await callApi<Task[]>('getTasks', { familyCode, enabledOnly: false });
 
-  if (error) {
+    // 解密任务名
+    const decrypted = await Promise.all(
+      (data || []).map(async (task) => ({
+        ...task,
+        name: await decrypt(task.name, familyCode),
+      }))
+    );
+    return decrypted;
+  } catch (error) {
     console.error('获取任务列表失败:', error);
     return [];
   }
-  return (data || []).map(toFrontendTask);
 }
 
 // 获取启用的任务列表
 export async function getEnabledTasks(familyCode: string): Promise<Task[]> {
-  const { data, error } = await supabase
-    .from(TABLES.TASKS)
-    .select('*')
-    .eq('family_code', familyCode)
-    .eq('enabled', true)
-    .order('created_at', { ascending: true });
+  try {
+    const data = await callApi<Task[]>('getTasks', { familyCode, enabledOnly: true });
 
-  if (error) {
+    // 解密任务名
+    const decrypted = await Promise.all(
+      (data || []).map(async (task) => ({
+        ...task,
+        name: await decrypt(task.name, familyCode),
+      }))
+    );
+    return decrypted;
+  } catch (error) {
     console.error('获取启用任务列表失败:', error);
     return [];
   }
-  return (data || []).map(toFrontendTask);
 }
 
 // 创建任务
@@ -55,44 +50,35 @@ export async function createTask(
     type: 'positive' | 'negative';
   }
 ): Promise<{ success: boolean; data?: Task; error?: string }> {
-  const { data, error } = await supabase
-    .from(TABLES.TASKS)
-    .insert({
-      family_code: familyCode,
-      name: task.name,
-      unit: task.unit,
-      score: task.score,
-      type: task.type,
-      enabled: true,
-    })
-    .select()
-    .single();
+  // 加密任务名
+  const encryptedName = await encrypt(task.name, familyCode);
 
-  if (error) {
-    console.error('创建任务失败:', error);
-    return { success: false, error: error.message };
+  const result = await callApiSafe<Task>('createTask', {
+    familyCode,
+    task: { ...task, name: encryptedName },
+  });
+
+  if (result.success && result.data) {
+    // 返回解密后的数据
+    return { success: true, data: { ...result.data, name: task.name } };
   }
-  return { success: true, data: toFrontendTask(data) };
+  return { success: result.success, error: result.error };
 }
 
 // 更新任务
 export async function updateTask(
   taskId: string,
-  updates: Partial<Pick<Task, 'name' | 'unit' | 'score' | 'type' | 'enabled'>>
+  updates: Partial<Pick<Task, 'name' | 'unit' | 'score' | 'type' | 'enabled'>>,
+  familyCode?: string
 ): Promise<{ success: boolean; error?: string }> {
-  const { error } = await supabase
-    .from(TABLES.TASKS)
-    .update({
-      ...updates,
-      updated_at: new Date().toISOString(),
-    })
-    .eq('id', taskId);
-
-  if (error) {
-    console.error('更新任务失败:', error);
-    return { success: false, error: error.message };
+  // 如果更新name且有familyCode，则加密
+  const encryptedUpdates = { ...updates };
+  if (updates.name && familyCode) {
+    encryptedUpdates.name = await encrypt(updates.name, familyCode);
   }
-  return { success: true };
+
+  const result = await callApiSafe('updateTask', { taskId, updates: encryptedUpdates });
+  return { success: result.success, error: result.error };
 }
 
 // 切换任务启用状态
@@ -100,36 +86,14 @@ export async function toggleTaskEnabled(
   taskId: string,
   enabled: boolean
 ): Promise<{ success: boolean; error?: string }> {
-  return updateTask(taskId, { enabled });
+  const result = await callApiSafe('toggleTaskEnabled', { taskId, enabled });
+  return { success: result.success, error: result.error };
 }
 
 // 删除任务
 export async function deleteTask(
   taskId: string
 ): Promise<{ success: boolean; error?: string }> {
-  const { error } = await supabase
-    .from(TABLES.TASKS)
-    .delete()
-    .eq('id', taskId);
-
-  if (error) {
-    console.error('删除任务失败:', error);
-    return { success: false, error: error.message };
-  }
-  return { success: true };
-}
-
-// 转换为前端格式
-function toFrontendTask(record: TaskRecord): Task {
-  return {
-    id: record.id,
-    family_code: record.family_code,
-    name: record.name,
-    unit: record.unit,
-    score: record.score,
-    type: record.type,
-    enabled: record.enabled,
-    created_at: record.created_at,
-    updated_at: record.updated_at,
-  };
+  const result = await callApiSafe('deleteTask', { taskId });
+  return { success: result.success, error: result.error };
 }
