@@ -22,6 +22,7 @@ dist-ssr
 
 # Other
 scripts/
+supabase/.temp/
 metadata.json
 
 # Logs
