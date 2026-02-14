@@ -1,16 +1,12 @@
 import { ClassicContent, DiaryEntry } from "../types";
 import { uploadCourseImage, getCourseImageUrl, checkCourseImageExists } from "./storageService";
+import { callApi } from "./apiService";
 
 // 第三方中转 API 配置（Gemini 原生格式）
 const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY || '';
 const GEMINI_BASE_URL = import.meta.env.VITE_GEMINI_BASE_URL || 'https://generativelanguage.googleapis.com';
 const IMAGE_MODEL = 'gemini-3-pro-image-preview';
 const TEXT_MODEL = 'gemini-3-flash-preview-nothinking';
-
-// MiniMax TTS API 配置
-const MINIMAX_API_KEY = import.meta.env.VITE_MINIMAX_API_KEY || '';
-const MINIMAX_GROUP_ID = import.meta.env.VITE_MINIMAX_GROUP_ID || '';
-const MINIMAX_TTS_URL = `https://api.minimax.chat/v1/t2a_v2?GroupId=${MINIMAX_GROUP_ID}`;
 
 // 图片缓存 - localStorage 作为本地缓存，云端为主存储
 const IMAGE_CACHE_PREFIX = 'dingdang_img_';
@@ -300,57 +296,12 @@ ${diaryContext || '暂无记录'}
 
 export const generateSpeechMiniMax = async (text: string): Promise<ArrayBuffer | null> => {
   try {
-    const response = await fetch(MINIMAX_TTS_URL, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${MINIMAX_API_KEY}`
-      },
-      body: JSON.stringify({
-        model: 'speech-2.6-turbo',
-        text: text,
-        stream: false,
-        timbre_weights: [
-          {
-            voice_id: 'Chinese (Mandarin)_Gentle_Senior',
-            weight: 100
-          }
-        ],
-        voice_setting: {
-          voice_id: '',
-          speed: 0.8,
-          vol: 1,
-          pitch: 0,
-          emotion: 'happy',
-          latex_read: false
-        },
-        audio_setting: {
-          sample_rate: 32000,
-          bitrate: 128000,
-          format: 'mp3'
-        },
-        language_boost: 'auto'
-      })
-    });
+    // 通过 Edge Function 代理调用 MiniMax TTS，避免 CORS 问题
+    const data = await callApi<{ audio: string | null }>('textToSpeech', { text });
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('MiniMax TTS error:', errorText);
-      return null;
-    }
-
-    // MiniMax 返回的是 JSON，包含十六进制编码的音频
-    const json = await response.json();
-
-    // 检查是否有错误
-    if (json.base_resp?.status_code !== 0 && json.base_resp?.status_code !== undefined) {
-      console.error('MiniMax TTS API error:', json.base_resp);
-      return null;
-    }
-
-    if (json.data?.audio) {
+    if (data?.audio) {
       // 将十六进制字符串转换为 ArrayBuffer
-      const hexString = json.data.audio;
+      const hexString = data.audio;
       const bytes = new Uint8Array(hexString.length / 2);
       for (let i = 0; i < hexString.length; i += 2) {
         bytes[i / 2] = parseInt(hexString.substr(i, 2), 16);
@@ -358,7 +309,7 @@ export const generateSpeechMiniMax = async (text: string): Promise<ArrayBuffer |
       return bytes.buffer;
     }
 
-    console.error('MiniMax TTS: No audio data in response', json);
+    console.error('MiniMax TTS: No audio data in response');
     return null;
   } catch (error) {
     console.error('Error calling MiniMax TTS:', error);

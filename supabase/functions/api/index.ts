@@ -626,6 +626,59 @@ serve(async (req) => {
         break;
       }
 
+      // ========== TTS 语音合成代理 ==========
+      case 'textToSpeech': {
+        const { text } = params;
+        const MINIMAX_API_KEY = Deno.env.get('MINIMAX_API_KEY') || '';
+        const MINIMAX_GROUP_ID = Deno.env.get('MINIMAX_GROUP_ID') || '';
+
+        const ttsResponse = await fetch(
+          `https://api.minimax.chat/v1/t2a_v2?GroupId=${MINIMAX_GROUP_ID}`,
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${MINIMAX_API_KEY}`,
+            },
+            body: JSON.stringify({
+              model: 'speech-2.6-turbo',
+              text,
+              stream: false,
+              timbre_weights: [
+                { voice_id: 'Chinese (Mandarin)_Gentle_Senior', weight: 100 }
+              ],
+              voice_setting: {
+                voice_id: '',
+                speed: 0.8,
+                vol: 1,
+                pitch: 0,
+                emotion: 'happy',
+                latex_read: false,
+              },
+              audio_setting: {
+                sample_rate: 32000,
+                bitrate: 128000,
+                format: 'mp3',
+              },
+              language_boost: 'auto',
+            }),
+          }
+        );
+
+        if (!ttsResponse.ok) {
+          const errText = await ttsResponse.text();
+          throw new Error(`MiniMax TTS error: ${errText}`);
+        }
+
+        const ttsJson = await ttsResponse.json();
+        if (ttsJson.base_resp?.status_code !== 0 && ttsJson.base_resp?.status_code !== undefined) {
+          throw new Error(`MiniMax TTS API error: ${JSON.stringify(ttsJson.base_resp)}`);
+        }
+
+        result = { audio: ttsJson.data?.audio || null };
+        break;
+      }
+
       default:
         return new Response(
           JSON.stringify({ error: `未知操作: ${action}` }),
