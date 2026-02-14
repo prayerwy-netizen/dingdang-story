@@ -125,10 +125,12 @@ const AudioPlayer = forwardRef<AudioPlayerHandle, AudioPlayerProps>(({ audioBuff
       }
     }
 
-    // 如果有缓存，直接播放
-    if (cachedAudioRef.current) {
+    // 优先使用预加载音频（props直接读取），其次用缓存
+    const audioToPlay = preloadedAudio || cachedAudioRef.current;
+    if (audioToPlay) {
+      cachedAudioRef.current = audioToPlay;
       setIsPlaying(true);
-      playOnElement(audio, cachedAudioRef.current);
+      playOnElement(audio, audioToPlay);
       return;
     }
 
