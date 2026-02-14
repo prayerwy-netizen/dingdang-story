@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState, useImperativeHandle, forwardRef } from 'react';
-import { speakWithMiniMax, stopSpeaking } from '../services/geminiService';
+import { generateSpeechMiniMax, formatTextForTTS, stopSpeaking, speakText } from '../services/geminiService';
 
 interface AudioPlayerProps {
   audioBuffer: AudioBuffer | null;
@@ -19,30 +19,11 @@ const isMobileDevice = (): boolean => {
   return /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
 };
 
-// 全局标记：用户是否已经交互过（整个会话中只需要一次）
+// 极小的静音 mp3（用于在用户手势中解锁 Audio 元素）
+const SILENT_MP3 = 'data:audio/mp3;base64,SUQzBAAAAAAAI1RTU0UAAAAPAAADTGF2ZjU4Ljc2LjEwMAAAAAAAAAAAAAAA//tQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWGluZwAAAA8AAAACAAABhgC7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7//////////////////////////////////////////////////////////////////8AAAAATGF2YzU4LjEzAAAAAAAAAAAAAAAAJAAAAAAAAAAAAYYoRBqpAAAAAAD/+1DEAAAGAAGn9AAAIgAANP8AAABMQU1FMy4xMDBVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVf/7UMQbg8AAAaQAAAAgAAA0gAAABFVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV';
+
+// 全局标记：用户是否已经交互过
 let globalHasUserInteracted = false;
-
-// 解锁音频播放（iOS 需要在用户交互时触发）
-const unlockAudio = () => {
-  if (globalHasUserInteracted) return;
-  globalHasUserInteracted = true;
-
-  // 创建并播放一个静音音频来解锁 AudioContext
-  try {
-    const AudioContext = window.AudioContext || (window as unknown as { webkitAudioContext: typeof window.AudioContext }).webkitAudioContext;
-    if (AudioContext) {
-      const ctx = new AudioContext();
-      const buffer = ctx.createBuffer(1, 1, 22050);
-      const source = ctx.createBufferSource();
-      source.buffer = buffer;
-      source.connect(ctx.destination);
-      source.start(0);
-      ctx.resume();
-    }
-  } catch (e) {
-    console.log('Audio unlock failed:', e);
-  }
-};
 
 const AudioPlayer = forwardRef<AudioPlayerHandle, AudioPlayerProps>(({ audioBuffer, text, preloadedAudio, autoPlay, onEnded }, ref) => {
   const [isPlaying, setIsPlaying] = useState(false);
@@ -87,12 +68,10 @@ const AudioPlayer = forwardRef<AudioPlayerHandle, AudioPlayerProps>(({ audioBuff
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [text]);
 
-  // 播放缓存的音频
-  const playCachedAudio = (audioData: ArrayBuffer) => {
+  // 在 Audio 元素上播放 ArrayBuffer 音频数据
+  const playOnElement = (audio: HTMLAudioElement, audioData: ArrayBuffer) => {
     const blob = new Blob([audioData], { type: 'audio/mp3' });
     const url = URL.createObjectURL(blob);
-    const audio = new Audio(url);
-    audioElementRef.current = audio;
 
     audio.onended = () => {
       URL.revokeObjectURL(url);
@@ -106,37 +85,50 @@ const AudioPlayer = forwardRef<AudioPlayerHandle, AudioPlayerProps>(({ audioBuff
       onEnded?.();
     };
 
-    // 移动端需要处理 play() 返回的 Promise
-    const playPromise = audio.play();
-    if (playPromise !== undefined) {
-      playPromise
-        .then(() => {
-          // 播放成功
-        })
-        .catch(() => {
-          URL.revokeObjectURL(url);
-          setIsPlaying(false);
-          onEnded?.();
-        });
-    }
+    audio.src = url;
+    audio.play().catch((err) => {
+      console.error('Audio play failed:', err);
+      URL.revokeObjectURL(url);
+      setIsPlaying(false);
+      // 降级到浏览器语音
+      if (text) {
+        speakText(formatTextForTTS(text), onEnded);
+      } else {
+        onEnded?.();
+      }
+    });
   };
 
   const playAudio = async () => {
     if (!text) return;
 
-    // 标记用户已经交互过，解锁音频播放
-    unlockAudio();
+    globalHasUserInteracted = true;
     setNeedUserInteraction(false);
 
+    // 停止之前的播放
     stopSpeaking();
     if (audioElementRef.current) {
       audioElementRef.current.pause();
     }
 
+    // 关键：在用户手势上下文中立即创建 Audio 元素并播放静音音频
+    // 这样后续可以复用这个已"解锁"的元素播放真实音频
+    const audio = new Audio();
+    audioElementRef.current = audio;
+
+    if (isMobileDevice()) {
+      audio.src = SILENT_MP3;
+      try {
+        await audio.play();
+      } catch {
+        // 静音播放失败也继续，不影响后续逻辑
+      }
+    }
+
     // 如果有缓存，直接播放
     if (cachedAudioRef.current) {
       setIsPlaying(true);
-      playCachedAudio(cachedAudioRef.current);
+      playOnElement(audio, cachedAudioRef.current);
       return;
     }
 
@@ -144,19 +136,31 @@ const AudioPlayer = forwardRef<AudioPlayerHandle, AudioPlayerProps>(({ audioBuff
     setIsPlaying(true);
 
     try {
-      await speakWithMiniMax(text, () => {
-        setIsPlaying(false);
-        setIsLoading(false);
-        onEnded?.();
-      }, (audioData) => {
+      const formattedText = formatTextForTTS(text);
+      const audioData = await generateSpeechMiniMax(formattedText);
+
+      if (audioData && audioData.byteLength > 1000) {
         // 缓存音频数据
         cachedAudioRef.current = audioData;
-      });
+        // 在已解锁的 Audio 元素上播放
+        playOnElement(audio, audioData);
+        setIsLoading(false);
+      } else {
+        // MiniMax 失败，降级到浏览器语音
+        console.log('MiniMax TTS failed, falling back to browser speech');
+        setIsLoading(false);
+        setIsPlaying(true);
+        speakText(formattedText, () => {
+          setIsPlaying(false);
+          onEnded?.();
+        });
+      }
     } catch (e) {
       console.error('Audio playback error:', e);
+      setIsLoading(false);
+      setIsPlaying(false);
+      onEnded?.();
     }
-
-    setIsLoading(false);
   };
 
   const stopAudio = () => {

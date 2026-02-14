@@ -405,8 +405,8 @@ export const playMiniMaxAudio = (audioData: ArrayBuffer, onEnd?: () => void): HT
 // 停止音频播放
 let currentAudio: HTMLAudioElement | null = null;
 
-// 格式化文本用于 TTS，添加正确的断句
-const formatTextForTTS = (text: string): string => {
+// 格式化文本用于 TTS，添加正确的断句（导出供 AudioPlayer 使用）
+export const formatTextForTTS = (text: string): string => {
   // 1. 将中文字符之间的空格替换为逗号+空格，确保正确断句
   // 例如："父母呼 应勿缓" → "父母呼， 应勿缓"
   let formatted = text.replace(/([一-龥])\s+([一-龥])/g, '$1， $2');
