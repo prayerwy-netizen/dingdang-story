@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, TouchEvent } from 'react';
 import { ChildProfile, ClassicContent, DiaryEntry, ChildView } from '../types';
 import { CATEGORY_INFO } from '../constants';
 import { generateIllustration, generateLessonScript, analyzeAnswerAndEncourage } from '../services/aiService';
-import { generateSpeech, generateSpeechMiniMax } from '../services/geminiService';
+import { generateSpeech, generateSpeechMiniMax, formatTextForTTS } from '../services/geminiService';
 import { getTotalScore } from '../services/recordService';
 import AudioPlayer, { AudioPlayerHandle } from './AudioPlayer';
 import Recorder from './Recorder';
@@ -87,6 +87,8 @@ const ChildMode: React.FC<ChildModeProps> = ({
   const [feedbackText, setFeedbackText] = useState<string>('');
   const [showFlowerAnimation, setShowFlowerAnimation] = useState(false);
   const [preloadedReadingAudio, setPreloadedReadingAudio] = useState<ArrayBuffer | null>(null);
+  const [preloadedExplanationAudio, setPreloadedExplanationAudio] = useState<ArrayBuffer | null>(null);
+  const [preloadedQuestionAudio, setPreloadedQuestionAudio] = useState<ArrayBuffer | null>(null);
 
   // Refs
   const explanationPlayerRef = useRef<AudioPlayerHandle>(null);
@@ -126,6 +128,8 @@ const ChildMode: React.FC<ChildModeProps> = ({
     setView(ChildView.LEARNING);
     setLearningState(LearningState.LOADING_ASSETS);
     setPreloadedReadingAudio(null); // 重置预加载音频
+    setPreloadedExplanationAudio(null);
+    setPreloadedQuestionAudio(null);
 
     // 构建第一段朗读文本
     const fullText = content.phrases.map(p => p.text).join(' ');
@@ -147,6 +151,18 @@ const ChildMode: React.FC<ChildModeProps> = ({
       if (img) setIllustration(img);
       setCurrentScript(script);
       if (readingAudio) setPreloadedReadingAudio(readingAudio);
+
+      // 后台预加载讲解和提问音频（不阻塞页面展示）
+      if (script?.explanation) {
+        generateSpeechMiniMax(formatTextForTTS(script.explanation))
+          .then(audio => { if (audio) setPreloadedExplanationAudio(audio); })
+          .catch(() => {});
+      }
+      if (script?.question) {
+        generateSpeechMiniMax(formatTextForTTS(script.question))
+          .then(audio => { if (audio) setPreloadedQuestionAudio(audio); })
+          .catch(() => {});
+      }
 
       // 先朗读古诗内容，再讲解
       setLearningState(LearningState.READING_CONTENT);
@@ -507,7 +523,7 @@ const ChildMode: React.FC<ChildModeProps> = ({
                       <div className="w-3 h-3 bg-primary-400 rounded-full animate-pulse"></div>
                       <p className="font-heading text-primary-600 text-lg">正在讲解...</p>
                     </div>
-                    <AudioPlayer ref={explanationPlayerRef} audioBuffer={explanationAudio} text={currentScript?.explanation} autoPlay={true} onEnded={handleExplanationEnded} />
+                    <AudioPlayer ref={explanationPlayerRef} audioBuffer={explanationAudio} text={currentScript?.explanation} preloadedAudio={preloadedExplanationAudio} autoPlay={true} onEnded={handleExplanationEnded} />
                   </div>
                 )}
 
@@ -543,7 +559,7 @@ const ChildMode: React.FC<ChildModeProps> = ({
                       <div className="w-3 h-3 bg-accent-orange rounded-full animate-pulse"></div>
                       <p className="font-heading text-accent-orange text-lg">提问时间~</p>
                     </div>
-                    <AudioPlayer ref={questionPlayerRef} audioBuffer={questionAudio} text={currentScript?.question} autoPlay={true} onEnded={handleQuestionEnded} />
+                    <AudioPlayer ref={questionPlayerRef} audioBuffer={questionAudio} text={currentScript?.question} preloadedAudio={preloadedQuestionAudio} autoPlay={true} onEnded={handleQuestionEnded} />
                   </div>
                 )}
 
