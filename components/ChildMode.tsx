@@ -136,12 +136,11 @@ const ChildMode: React.FC<ChildModeProps> = ({
     const readingText = `${profile.name}，我们今天学的是，${content.title}。跟我一起读。${fullText}`;
 
     try {
-      // 并行启动所有任务：图片、脚本、第一段音频
+      // 第一阶段：并行加载图片、脚本、朗读音频
       const imagePromise = generateIllustration(content);
       const scriptPromise = generateLessonScript(content, profile.name, profile.age, diaries);
-      const readingAudioPromise = generateSpeechMiniMax(readingText);
+      const readingAudioPromise = generateSpeechMiniMax(formatTextForTTS(readingText));
 
-      // 等待所有任务完成
       const [img, script, readingAudio] = await Promise.all([
         imagePromise,
         scriptPromise,
@@ -152,17 +151,14 @@ const ChildMode: React.FC<ChildModeProps> = ({
       setCurrentScript(script);
       if (readingAudio) setPreloadedReadingAudio(readingAudio);
 
-      // 后台预加载讲解和提问音频（不阻塞页面展示）
-      if (script?.explanation) {
-        generateSpeechMiniMax(formatTextForTTS(script.explanation))
-          .then(audio => { if (audio) setPreloadedExplanationAudio(audio); })
-          .catch(() => {});
-      }
-      if (script?.question) {
-        generateSpeechMiniMax(formatTextForTTS(script.question))
-          .then(audio => { if (audio) setPreloadedQuestionAudio(audio); })
-          .catch(() => {});
-      }
+      // 第二阶段：脚本就绪后，并行预加载讲解和提问音频
+      const [expAudio, qAudio] = await Promise.all([
+        script?.explanation ? generateSpeechMiniMax(formatTextForTTS(script.explanation)) : null,
+        script?.question ? generateSpeechMiniMax(formatTextForTTS(script.question)) : null,
+      ]);
+
+      if (expAudio) setPreloadedExplanationAudio(expAudio);
+      if (qAudio) setPreloadedQuestionAudio(qAudio);
 
       // 先朗读古诗内容，再讲解
       setLearningState(LearningState.READING_CONTENT);
