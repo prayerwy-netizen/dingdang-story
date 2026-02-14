@@ -43,7 +43,7 @@ serve(async (req) => {
     const { action, params } = await req.json();
 
     // 验证 family_code 必须存在
-    if (!params?.familyCode && !['deleteRecord', 'deleteRequest', 'approveRequest', 'rejectRequest', 'deleteDiary', 'deleteCustomContent', 'deleteTask', 'deleteGift', 'toggleTaskEnabled', 'toggleGiftEnabled'].includes(action)) {
+    if (!params?.familyCode && !['deleteRecord', 'deleteRequest', 'approveRequest', 'rejectRequest', 'deleteDiary', 'deleteCustomContent', 'deleteTask', 'deleteGift', 'toggleTaskEnabled', 'toggleGiftEnabled', 'textToSpeech'].includes(action)) {
       return new Response(
         JSON.stringify({ error: '缺少 family_code' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
