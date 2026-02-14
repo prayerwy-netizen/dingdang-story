@@ -32,13 +32,6 @@ const AudioPlayer = forwardRef<AudioPlayerHandle, AudioPlayerProps>(({ audioBuff
   const cachedAudioRef = useRef<ArrayBuffer | null>(null);
   const audioElementRef = useRef<HTMLAudioElement | null>(null);
 
-  // 如果有预加载的音频，直接使用
-  useEffect(() => {
-    if (preloadedAudio) {
-      cachedAudioRef.current = preloadedAudio;
-    }
-  }, [preloadedAudio]);
-
   useEffect(() => {
     return () => {
       stopSpeaking();
@@ -54,6 +47,13 @@ const AudioPlayer = forwardRef<AudioPlayerHandle, AudioPlayerProps>(({ audioBuff
     cachedAudioRef.current = null;
     setNeedUserInteraction(false);
   }, [text]);
+
+  // 如果有预加载的音频，直接使用（必须在 text effect 之后，避免被清除）
+  useEffect(() => {
+    if (preloadedAudio) {
+      cachedAudioRef.current = preloadedAudio;
+    }
+  }, [preloadedAudio]);
 
   useEffect(() => {
     if (autoPlay && text) {
