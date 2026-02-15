@@ -59,6 +59,10 @@ const GiftManager: React.FC<GiftManagerProps> = ({ familyCode }) => {
       toast.warning('请输入礼物名称');
       return;
     }
+    if (formScore < 1) {
+      toast.warning('小元宝数量至少为1');
+      return;
+    }
 
     if (editingGift) {
       // 更新礼物
@@ -270,8 +274,8 @@ const GiftManager: React.FC<GiftManagerProps> = ({ familyCode }) => {
                 <input
                   type="number"
                   min="1"
-                  value={formScore}
-                  onChange={e => setFormScore(Math.max(1, parseInt(e.target.value) || 1))}
+                  value={formScore || ''}
+                  onChange={e => setFormScore(parseInt(e.target.value) || 0)}
                   className="w-full px-4 py-3 rounded-xl border border-primary-200 focus:outline-none focus:ring-2 focus:ring-primary-400"
                 />
               </div>
